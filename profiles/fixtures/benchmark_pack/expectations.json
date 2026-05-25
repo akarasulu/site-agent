@@ -1,0 +1,48 @@
+{
+  "profiles": [
+    {
+      "name": "docs_site",
+      "base_url": "https://docs.example",
+      "start_path": "index.html",
+      "expected": {
+        "min_pages": 3,
+        "min_forms": 1,
+        "min_tools": 3,
+        "min_ready_mappings": 2
+      }
+    },
+    {
+      "name": "workflow_dashboard",
+      "base_url": "https://workflow.example",
+      "start_path": "index.html",
+      "expected": {
+        "min_pages": 3,
+        "min_forms": 3,
+        "min_tools": 6,
+        "min_ready_mappings": 3
+      }
+    },
+    {
+      "name": "settings_admin",
+      "base_url": "https://admin.example",
+      "start_path": "index.html",
+      "expected": {
+        "min_pages": 3,
+        "min_forms": 3,
+        "min_tools": 6,
+        "min_ready_mappings": 3
+      }
+    },
+    {
+      "name": "staged_dialog",
+      "base_url": "https://staged.example",
+      "start_path": "index.html",
+      "expected": {
+        "min_pages": 3,
+        "min_forms": 2,
+        "min_tools": 5,
+        "min_ready_mappings": 3
+      }
+    }
+  ]
+}

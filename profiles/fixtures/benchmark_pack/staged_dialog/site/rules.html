@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <head><title>Rules</title></head>
+  <body>
+    <h1>Rules</h1>
+    <button type="button" id="add-rule">Add Rule</button>
+    <form id="rule-form" aria-label="Rule editor" hidden>
+      <label for="rule-name">Rule Name</label>
+      <input id="rule-name" name="rule_name" type="text" minlength="1" maxlength="10" required>
+      <label for="rule-port">Service Port</label>
+      <input id="rule-port" name="service_port" type="number" min="1" max="65535" required>
+      <label for="rule-enabled">Enabled</label>
+      <input id="rule-enabled" name="enabled" type="checkbox">
+      <button type="submit">Save Rule</button>
+      <button type="button">Cancel</button>
+    </form>
+    <table>
+      <thead><tr><th>Rule Name</th><th>Service Port</th><th>State</th><th>Actions</th></tr></thead>
+      <tbody>
+        <tr><td>demo</td><td>8080</td><td>Off</td><td><button type="button">Edit</button></td></tr>
+      </tbody>
+    </table>
+  </body>
+</html>

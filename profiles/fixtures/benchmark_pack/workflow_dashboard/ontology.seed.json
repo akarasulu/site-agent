@@ -1,0 +1,9 @@
+{
+  "terms": [
+    {"canonical_name": "incident status", "aliases": ["Incident Status"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "assignee", "aliases": ["Assignee"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "priority", "aliases": ["Priority"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "customer email", "aliases": ["Customer Email"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "report format", "aliases": ["Report Format"], "sources": ["seed"], "confidence": 0.9}
+  ]
+}

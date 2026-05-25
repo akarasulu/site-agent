@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MappedSchema",
+  "type": "object",
+  "required": ["profile_id", "run_id", "generated_at", "ontology", "mappings", "evidence"],
+  "properties": {
+    "profile_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "generated_at": {"type": "string"},
+    "ontology": {"type": "array"},
+    "mappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ui_element_id", "canonical_name", "confidence", "evidence_ids", "status"]
+      }
+    },
+    "evidence": {"type": "array"}
+  }
+}

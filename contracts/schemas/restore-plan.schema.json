@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RestorePlan",
+  "type": "object",
+  "required": ["schema_version", "id", "target_ref", "current_snapshot_id", "steps", "risk_summary", "requires_review"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "id": {"type": "string"},
+    "target_ref": {"type": "string"},
+    "current_snapshot_id": {"type": "string"},
+    "rollback_snapshot_id": {"type": "string"},
+    "risk_summary": {
+      "type": "object",
+      "properties": {
+        "low": {"type": "integer", "minimum": 0},
+        "medium": {"type": "integer", "minimum": 0},
+        "high": {"type": "integer", "minimum": 0}
+      }
+    },
+    "requires_review": {"type": "boolean"},
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["setting_id", "tool_name", "args", "previous_value", "desired_value", "risk_level", "evidence_ids", "status"],
+        "properties": {
+          "setting_id": {"type": "string"},
+          "setting_ids": {"type": "array", "items": {"type": "string"}},
+          "tool_name": {"type": "string"},
+          "args": {"type": "object"},
+          "restore_args": {"type": "object", "additionalProperties": {"type": "string"}},
+          "previous_value": {},
+          "desired_value": {},
+          "risk_level": {"enum": ["low", "medium", "high"]},
+          "evidence_ids": {"type": "array", "items": {"type": "string"}},
+          "status": {"enum": ["planned", "review_required", "skipped", "applied", "failed"]}
+        }
+      }
+    },
+    "non_restorable": {"type": "array"}
+  }
+}

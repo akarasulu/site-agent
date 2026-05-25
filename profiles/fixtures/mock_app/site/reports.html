@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>OpsBoard Reports</title>
+</head>
+<body>
+  <header>
+    <h1>Reports</h1>
+    <nav>
+      <a href="/dashboard.html">Dashboard</a>
+      <a href="/settings.html">Settings</a>
+      <a href="/users.html">Users</a>
+    </nav>
+  </header>
+  <main>
+    <section>
+      <h2>Export Activity</h2>
+      <form action="/reports.html" method="get" aria-label="Export activity report">
+        <label for="date-range">Date range</label>
+        <input id="date-range" name="date_range" type="text" placeholder="Last 7 days">
+        <label for="format">Export format</label>
+        <select id="format" name="format">
+          <option>CSV</option>
+          <option>JSON</option>
+        </select>
+        <button type="submit">Export report</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

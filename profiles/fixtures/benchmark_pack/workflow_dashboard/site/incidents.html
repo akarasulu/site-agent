@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <head><title>Incidents</title></head>
+  <body>
+    <h1>Incidents</h1>
+    <p>Priority: High</p>
+    <form action="/incidents/create" method="post">
+      <label>Customer Email <input name="customer_email" type="email"></label>
+      <label>Priority <select name="priority"><option>Low</option><option>High</option></select></label>
+      <button type="submit">Create Incident</button>
+    </form>
+    <form action="/incidents/assign" method="post">
+      <label>Assignee <input name="assignee"></label>
+      <button type="submit">Assign Incident</button>
+    </form>
+    <a href="index.html">Home</a>
+    <a href="reports.html">Reports</a>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "terms": [
+    {"canonical_name": "email address", "aliases": ["email"], "confidence": 0.9},
+    {"canonical_name": "password", "aliases": ["account password"], "confidence": 0.9},
+    {"canonical_name": "incident status", "aliases": ["status"], "confidence": 0.9},
+    {"canonical_name": "service owner", "aliases": ["owner"], "confidence": 0.9},
+    {"canonical_name": "alert email", "aliases": ["notification email"], "confidence": 0.9},
+    {"canonical_name": "maintenance window", "aliases": ["change window"], "confidence": 0.9},
+    {"canonical_name": "retention days", "aliases": ["record retention"], "confidence": 0.9},
+    {"canonical_name": "user email", "aliases": ["invite email"], "confidence": 0.9},
+    {"canonical_name": "access role", "aliases": ["role"], "confidence": 0.9},
+    {"canonical_name": "date range", "aliases": ["report range"], "confidence": 0.9},
+    {"canonical_name": "export format", "aliases": ["format"], "confidence": 0.9},
+    {"canonical_name": "item name", "aliases": ["Item Name"], "confidence": 0.9},
+    {"canonical_name": "service port", "aliases": ["Service Port"], "confidence": 0.9},
+    {"canonical_name": "enabled", "aliases": ["state", "active"], "confidence": 0.9}
+  ]
+}

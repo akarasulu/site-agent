@@ -1,0 +1,9 @@
+{
+  "terms": [
+    {"canonical_name": "ssid", "aliases": ["SSID", "Network Name"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "dhcp range", "aliases": ["DHCP Range"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "admin email", "aliases": ["Admin Email"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "firmware version", "aliases": ["Firmware Version"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "backup status", "aliases": ["Backup Status"], "sources": ["seed"], "confidence": 0.9}
+  ]
+}

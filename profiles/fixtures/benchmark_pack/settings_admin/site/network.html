@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head><title>Network Settings</title></head>
+  <body>
+    <h1>Network Settings</h1>
+    <form action="/network/wifi" method="post">
+      <label>SSID <input name="ssid"></label>
+      <button type="submit">Save Wi-Fi</button>
+    </form>
+    <form action="/network/dhcp" method="post">
+      <label>DHCP Range <input name="dhcp_range"></label>
+      <button type="submit">Apply DHCP</button>
+    </form>
+    <a href="index.html">Home</a>
+    <a href="system.html">System</a>
+  </body>
+</html>

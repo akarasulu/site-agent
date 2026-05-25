@@ -1,0 +1,17 @@
+{
+  "terms": [
+    {"canonical_name": "wan status", "aliases": ["WAN Status", "connection status"], "confidence": 0.9},
+    {"canonical_name": "internet uptime", "aliases": ["Internet up time", "WAN uptime"], "confidence": 0.9},
+    {"canonical_name": "ip address", "aliases": ["IP Address", "WAN IP address"], "confidence": 0.9},
+    {"canonical_name": "ssid name", "aliases": ["SSID Name", "wireless network name"], "confidence": 0.9},
+    {"canonical_name": "ssid switch", "aliases": ["SSID Switch", "SSID status"], "confidence": 0.9},
+    {"canonical_name": "wlan channel", "aliases": ["Channel", "WLAN channel"], "confidence": 0.9},
+    {"canonical_name": "encryption type", "aliases": ["Encryption Type", "wireless security"], "confidence": 0.9},
+    {"canonical_name": "voip status", "aliases": ["VoIP Status", "phone status"], "confidence": 0.9},
+    {"canonical_name": "device type", "aliases": ["Device Type", "model"], "confidence": 0.9},
+    {"canonical_name": "software version", "aliases": ["Software Version", "firmware version"], "confidence": 0.9},
+    {"canonical_name": "hardware version", "aliases": ["Hardware Version"], "confidence": 0.9},
+    {"canonical_name": "system uptime", "aliases": ["System up time", "device uptime"], "confidence": 0.9},
+    {"canonical_name": "access devices", "aliases": ["Access Devices Information", "client status"], "confidence": 0.9}
+  ]
+}

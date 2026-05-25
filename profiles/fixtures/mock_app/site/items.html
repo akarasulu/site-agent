@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>OpsBoard Dynamic Items</title>
+</head>
+<body>
+  <header>
+    <h1>Dynamic Items</h1>
+    <nav>
+      <a href="/dashboard.html">Dashboard</a>
+      <a href="/settings.html">Settings</a>
+      <a href="/users.html">Users</a>
+      <a href="/reports.html">Reports</a>
+    </nav>
+  </header>
+  <main>
+    <section>
+      <h2>Managed Items</h2>
+      <p>Item Name Length: 1 ~ 10</p>
+      <button type="button" id="add-item">Add Item</button>
+      <form id="item-form" aria-label="Add item form" hidden>
+        <label for="item-name">Item Name</label>
+        <input id="item-name" name="item_name" type="text" minlength="1" maxlength="10" required>
+        <label for="service-port">Service Port</label>
+        <input id="service-port" name="service_port" type="number" min="1" max="65535" required>
+        <label for="item-enabled">Enabled</label>
+        <input id="item-enabled" name="enabled" type="checkbox">
+        <button type="button" id="save-item">Save Item</button>
+        <button type="button" id="cancel-item">Cancel</button>
+      </form>
+      <table>
+        <thead>
+          <tr><th>Item Name</th><th>Service Port</th><th>State</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="items-body"></tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const form = document.querySelector('#item-form');
+    const addButton = document.querySelector('#add-item');
+    const cancelButton = document.querySelector('#cancel-item');
+    const saveButton = document.querySelector('#save-item');
+    const body = document.querySelector('#items-body');
+
+    async function loadItems() {
+      const response = await fetch('/api/items');
+      const data = await response.json();
+      body.innerHTML = '';
+      for (const item of data.items) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${item.item_name}</td>
+          <td>${item.service_port}</td>
+          <td>${item.enabled ? 'On' : 'Off'}</td>
+          <td>
+            <button type="button" data-action="toggle">${item.enabled ? 'Deactivate' : 'Activate'}</button>
+            <button type="button" data-action="delete">Delete</button>
+          </td>`;
+        row.querySelector('[data-action="toggle"]').addEventListener('click', async () => {
+          await fetch(`/api/items/${encodeURIComponent(item.item_name)}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: !item.enabled})
+          });
+          await loadItems();
+        });
+        row.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+          await fetch(`/api/items/${encodeURIComponent(item.item_name)}`, {method: 'DELETE'});
+          await loadItems();
+        });
+        body.appendChild(row);
+      }
+    }
+
+    addButton.addEventListener('click', () => {
+      form.hidden = false;
+      document.querySelector('#item-name').focus();
+    });
+    cancelButton.addEventListener('click', () => {
+      form.reset();
+      form.hidden = true;
+    });
+    saveButton.addEventListener('click', async () => {
+      const payload = {
+        item_name: document.querySelector('#item-name').value,
+        service_port: document.querySelector('#service-port').value,
+        enabled: document.querySelector('#item-enabled').checked
+      };
+      const response = await fetch('/api/items', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        window.alert(error.error || 'Unable to save item');
+        return;
+      }
+      form.reset();
+      form.hidden = true;
+      await loadItems();
+    });
+    loadItems();
+  </script>
+</body>
+</html>

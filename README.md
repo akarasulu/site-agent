@@ -1,0 +1,173 @@
+# site-agent
+
+`site-agent` is a generic, domain-aware website interaction mapper. It creates target profiles, crawls browser applications, extracts forms and actions, aligns UI evidence to domain terms, and generates stable MCP tool contracts.
+
+The project core is product-agnostic. Target-specific behavior belongs in profiles and adapters.
+
+## Quick Start
+
+```bash
+site-agent profile init --name my-site --base-url https://example.com
+site-agent auth setup --profile my-site
+site-agent crawl run --profile my-site
+site-agent schema review --profile my-site
+site-agent mcp build --profile my-site
+site-agent mcp serve --profile my-site
+site-agent config save --profile my-site --repo ../my-site-settings --commit --tag v1
+site-agent config coverage --profile my-site --settings-repo ../my-site-settings
+site-agent drift check --profile my-site
+```
+
+Install browser crawling support with:
+
+```bash
+pip install -e ".[crawl]"
+playwright install chromium
+```
+
+## Mock App Harness
+
+The repository includes an OpsBoard fixture under `profiles/fixtures/mock_app` for fast, product-agnostic iteration.
+
+Run the dependency-light fixture flow:
+
+```bash
+scripts/run-mock-e2e.sh
+```
+
+Run the mock website in Docker:
+
+```bash
+scripts/run-mock-container.sh
+```
+
+## Router Validation
+
+Router validation is opt-in and uses an external profile under `profiles/examples/zte-router`.
+
+```bash
+scripts/run-router-integration.sh
+```
+
+The script reads `SITE_AGENT_ROUTER_PASSWORD` or prompts silently, stores browser session state only in the temporary run workspace, and removes that session state after the crawl. Router-facing commands may need a network grant when run from a sandboxed agent environment.
+
+### Example: ZTE Modem/Router Profile
+
+The ZTE profile is an example validation target, not core product logic. Keep credentials outside the repository:
+
+```bash
+export SITE_AGENT_ROUTER_URL=https://192.168.1.1
+export SITE_AGENT_ROUTER_USER=admin
+read -rsp "Router password: " SITE_AGENT_ROUTER_PASSWORD
+export SITE_AGENT_ROUTER_PASSWORD
+```
+
+Then run the normal workflow against a private workspace/profile:
+
+```bash
+site-agent profile import-example profiles/examples/zte-router --name zte-router
+site-agent auth setup --profile zte-router \
+  --username-env SITE_AGENT_ROUTER_USER \
+  --password-env SITE_AGENT_ROUTER_PASSWORD
+site-agent docs discover --profile zte-router --product-hint "ZTE router web UI user guide"
+site-agent crawl run --profile zte-router --research-product-hint "ZTE router web UI user guide"
+site-agent schema review --profile zte-router
+site-agent mcp build --profile zte-router
+site-agent config save --profile zte-router --repo ../zte-router-settings --commit --tag v1
+site-agent config coverage --profile zte-router --settings-repo ../zte-router-settings
+site-agent package build --profile zte-router
+```
+
+For restores, start with planning and readiness checks. Apply mode is disabled unless the profile risk policy explicitly opts in.
+
+```bash
+site-agent config diff --profile zte-router --repo ../zte-router-settings --ref v1
+site-agent config restore-plan --profile zte-router --repo ../zte-router-settings --ref v1
+site-agent config restore-readiness --profile zte-router --repo ../zte-router-settings --ref v1 --apply --confirm
+site-agent config restore --profile zte-router --repo ../zte-router-settings --ref v1 --mode dry-run
+```
+
+Use private storage, filesystem permissions, `git-crypt`, `sops`, or equivalent controls for settings repositories. Captured configuration values are preserved as-is.
+
+## AI Backends
+
+AI is optional. The default path is deterministic and evidence-gated.
+
+```bash
+SITE_AGENT_AI_PROVIDER=fake site-agent schema review --profile demo
+SITE_AGENT_AI_PROVIDER=openai OPENAI_API_KEY=... site-agent schema review --profile demo
+```
+
+Supported providers:
+
+- `none` or unset: deterministic ontology plus lexical alignment
+- `fake`: deterministic test backend for CI
+- `openai`: OpenAI Responses API backend using structured JSON outputs
+
+OpenAI settings:
+
+- `OPENAI_API_KEY`
+- `SITE_AGENT_AI_MODEL`, default `gpt-5-mini`
+
+AI outputs are never accepted as the sole source of truth. Public mappings still require evidence IDs and confidence gating.
+
+Run a bounded live OpenAI smoke test:
+
+```bash
+scripts/run-openai-ai-smoke.sh
+```
+
+Generated write tools are opt-in and dry-run by default:
+
+```bash
+site-agent mcp build --profile my-site --include-writes
+site-agent mcp call --profile my-site --tool save_settings --args-json args.json
+site-agent mcp call --profile my-site --tool save_settings --args-json args.json --mode apply
+```
+
+Contract stability helpers:
+
+```bash
+site-agent mcp diff --profile my-site --baseline output/my-site/mcp/contract.json
+site-agent mcp refresh-adapter --profile my-site
+```
+
+## Configuration Versioning
+
+`site-agent` is designed to snapshot web UI settings into a small dedicated git repository, then diff or restore those settings later through approved UI tools.
+
+Workflow:
+
+```bash
+site-agent config save --profile my-site --repo ../my-site-settings --commit --tag v1
+site-agent config coverage --profile my-site --settings-repo ../my-site-settings
+site-agent config diff --profile my-site --repo ../my-site-settings --ref v1
+site-agent config restore-plan --profile my-site --repo ../my-site-settings --ref v1
+site-agent config restore-readiness --profile my-site --repo ../my-site-settings --ref v1 --apply --confirm
+site-agent config restore --profile my-site --repo ../my-site-settings --ref v1 --mode dry-run
+```
+
+Snapshots are deterministic and evidence-backed. Restore planning maps changed settings to generated MCP write or staged-action tools, groups settings by shared forms where possible, and records non-restorable settings explicitly.
+
+Apply mode is guarded:
+
+- the profile must set `risk.write_mode` to `apply`
+- `--confirm` is required
+- the settings repository must be clean
+- the current snapshot must be fresh and match the latest crawl/save cycle
+- rollback/current snapshot IDs must exist
+- post-restore verification should compare a fresh snapshot against the target ref
+
+Run controlled apply tests against mock or fixture targets before using apply on a real site.
+
+Detailed design: `contracts/config-versioning-design.md`.
+
+## Packaging for Agents
+
+Build a reusable knowledge package after crawl, schema review, MCP generation, and optional config coverage:
+
+```bash
+site-agent package build --profile my-site
+```
+
+The package includes public schema/tool metadata, interaction graph, ontology, reports, and RAG chunks. Private adapter bindings and profile data are separated under `private/` when included.

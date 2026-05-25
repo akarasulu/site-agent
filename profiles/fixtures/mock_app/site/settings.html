@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>OpsBoard Settings</title>
+</head>
+<body>
+  <header>
+    <h1>Workspace Settings</h1>
+    <nav>
+      <a href="/dashboard.html">Dashboard</a>
+      <a href="/users.html">Users</a>
+      <a href="/reports.html">Reports</a>
+      <a href="/items.html">Items</a>
+    </nav>
+  </header>
+  <main>
+    <section>
+      <h2>Notification Policy</h2>
+      <form action="/settings.html" method="post" aria-label="Notification policy">
+        <label for="alert-email">Alert email</label>
+        <input id="alert-email" name="alert_email" type="email" required>
+        <label for="maintenance-window">Maintenance window</label>
+        <input id="maintenance-window" name="maintenance_window" type="text" placeholder="Sunday 02:00 UTC">
+        <label for="retention-days">Retention days</label>
+        <input id="retention-days" name="retention_days" type="number" min="1" max="365">
+        <button type="submit">Save settings</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

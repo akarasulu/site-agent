@@ -1,0 +1,11 @@
+.venv/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+output/
+settings-repos/
+profiles/*/auth/
+profiles/*/profile.json
+profiles/*/docs/*.html
+site-agent-openai.key

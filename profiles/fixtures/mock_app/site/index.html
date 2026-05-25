@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>OpsBoard Login</title>
+</head>
+<body>
+  <header>
+    <h1>OpsBoard</h1>
+    <nav>
+      <a href="/dashboard.html">Dashboard</a>
+      <a href="/settings.html">Settings</a>
+      <a href="/users.html">Users</a>
+    </nav>
+  </header>
+  <main>
+    <h2>Sign in</h2>
+    <form action="/dashboard.html" method="post" aria-label="Sign in form">
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+    </form>
+  </main>
+</body>
+</html>

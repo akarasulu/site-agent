@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>OpsBoard Dashboard</title>
+</head>
+<body>
+  <header>
+    <h1>Service Dashboard</h1>
+    <nav>
+      <a href="/settings.html">Settings</a>
+      <a href="/users.html">Users</a>
+      <a href="/reports.html">Reports</a>
+      <a href="/items.html">Items</a>
+    </nav>
+  </header>
+  <main>
+    <section>
+      <h2>Status Filters</h2>
+      <form action="/dashboard.html" method="get" aria-label="Filter incidents">
+        <label for="status">Incident status</label>
+        <select id="status" name="status">
+          <option>Open</option>
+          <option>Resolved</option>
+        </select>
+        <label for="owner">Service owner</label>
+        <input id="owner" name="owner" type="search" placeholder="Team or person">
+        <button type="submit">Apply filters</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

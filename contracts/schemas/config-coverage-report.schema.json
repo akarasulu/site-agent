@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Configuration Coverage Report",
+  "type": "object",
+  "required": [
+    "profile_id",
+    "profile_name",
+    "run_id",
+    "generated_at",
+    "confidence",
+    "scope",
+    "evidence_coverage",
+    "tool_coverage",
+    "dynamic_probing",
+    "documentation_gap_check",
+    "ui_invariant_gaps",
+    "convergence",
+    "gaps",
+    "recommended_next_actions"
+  ],
+  "properties": {
+    "profile_id": { "type": "string" },
+    "profile_name": { "type": "string" },
+    "run_id": { "type": "string" },
+    "settings_snapshot_run_id": { "type": ["string", "null"] },
+    "generated_at": { "type": "string" },
+    "confidence": {
+      "type": "object",
+      "required": ["score", "band", "weights", "components"],
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "band": { "type": "string", "enum": ["high", "medium", "low"] },
+        "weights": { "type": "object", "additionalProperties": { "type": "number" } },
+        "components": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 } }
+      },
+      "additionalProperties": true
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "pages_seen",
+        "forms_seen",
+        "fields_seen",
+        "visible_fields_seen",
+        "hidden_fields_seen",
+        "actions_seen",
+        "readonly_values_seen",
+        "interaction_flows_seen",
+        "settings_extracted"
+      ],
+      "properties": {
+        "pages_seen": { "type": "integer", "minimum": 0 },
+        "forms_seen": { "type": "integer", "minimum": 0 },
+        "fields_seen": { "type": "integer", "minimum": 0 },
+        "visible_fields_seen": { "type": "integer", "minimum": 0 },
+        "hidden_fields_seen": { "type": "integer", "minimum": 0 },
+        "actions_seen": { "type": "integer", "minimum": 0 },
+        "readonly_values_seen": { "type": "integer", "minimum": 0 },
+        "interaction_flows_seen": { "type": "integer", "minimum": 0 },
+        "settings_extracted": { "type": "integer", "minimum": 0 },
+        "previous_counts": { "type": ["object", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "evidence_coverage": { "type": "object", "additionalProperties": true },
+    "tool_coverage": { "type": "object", "additionalProperties": true },
+    "dynamic_probing": { "type": "object", "additionalProperties": true },
+    "documentation_gap_check": { "type": "object", "additionalProperties": true },
+    "ui_invariant_gaps": { "type": "array", "items": { "type": "object" } },
+    "convergence": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["unknown", "converged", "still_discovering"] },
+        "previous_run_id": { "type": ["string", "null"] },
+        "new_pages": { "type": ["integer", "null"], "minimum": 0 },
+        "new_forms": { "type": ["integer", "null"], "minimum": 0 },
+        "new_fields": { "type": ["integer", "null"], "minimum": 0 },
+        "new_flows": { "type": ["integer", "null"], "minimum": 0 },
+        "new_settings": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "gaps": { "type": "array", "items": { "type": "object" } },
+    "recommended_next_actions": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CrawlSnapshot",
+  "type": "object",
+  "required": ["timestamp", "profile_id", "run_id", "pages", "forms", "elements", "transitions"],
+  "properties": {
+    "timestamp": {"type": "string"},
+    "profile_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "pages": {"type": "array"},
+    "forms": {"type": "array"},
+    "elements": {"type": "array"},
+    "transitions": {"type": "array"},
+    "evidence": {"type": "array"},
+    "interaction_flows": {"type": "array"}
+  }
+}

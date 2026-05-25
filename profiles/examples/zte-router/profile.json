@@ -1,0 +1,70 @@
+{
+  "auth": {
+    "password_env": "SITE_AGENT_ROUTER_PASSWORD",
+    "storage_state_path": "auth/storage-state.json",
+    "strategy": "external-browser-session",
+    "username_env": "SITE_AGENT_ROUTER_USER",
+    "verified_at": null
+  },
+  "base_url": "https://192.168.1.1",
+  "created_at": "2026-05-24T00:00:00+00:00",
+  "crawl": {
+    "allow_subdomains": false,
+    "exclude_globs": [],
+    "discover_js_states": true,
+    "max_js_states": 120,
+    "max_js_depth": 4,
+    "max_crawl_seconds": 240,
+    "ai_navigation_planning": true,
+    "ai_navigation_budget": 4,
+    "click_deny_patterns": [],
+    "ignore_https_errors": true,
+    "include_globs": [],
+    "js_navigation_texts": [
+      "Home",
+      "Topology",
+      "Internet",
+      "Status",
+      "WAN",
+      "Security",
+      "Parental Controls",
+      "DDNS",
+      "SNTP",
+      "Port Binding",
+      "Ethernet",
+      "3G|4G",
+      "DSLite",
+      "6RD",
+      "Local Network",
+      "WLAN",
+      "LAN",
+      "FTP",
+      "UPnP",
+      "DMS",
+      "DNS",
+      "VoIP",
+      "Management & Diagnosis",
+      "Account Management",
+      "Idle Timeout",
+      "System Management",
+      "Network Diagnosis",
+      "ARP Table",
+      "MAC Table"
+    ],
+    "max_pages": 1,
+    "navigation_wait_ms": 1500,
+    "read_only": true,
+    "redaction_patterns": []
+  },
+  "docs_path": "docs",
+  "host_allowlist": [
+    "192.168.1.1"
+  ],
+  "id": "profile_zte_router_example",
+  "name": "zte-router",
+  "ontology_seed_path": "ontology.seed.json",
+  "risk": {
+    "high_risk_requires_confirmation": true,
+    "write_mode": "dry-run"
+  }
+}

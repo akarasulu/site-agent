@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConfigSnapshot",
+  "type": "object",
+  "required": ["schema_version", "id", "timestamp", "profile_id", "profile_name", "settings", "value_policy"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "id": {"type": "string"},
+    "timestamp": {"type": "string"},
+    "profile_id": {"type": "string"},
+    "profile_name": {"type": "string"},
+    "source_run_id": {"type": "string"},
+    "settings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "canonical_name", "path", "value", "value_type", "evidence_ids", "confidence", "sensitivity", "restorable"],
+        "properties": {
+          "id": {"type": "string"},
+          "canonical_name": {"type": "string"},
+          "path": {"type": "array", "items": {"type": "string"}},
+          "value": {},
+          "value_type": {"type": "string"},
+          "source_tool": {"type": ["string", "null"]},
+          "restore_tool": {"type": ["string", "null"]},
+          "restore_arg": {"type": ["string", "null"]},
+          "restore_binding": {
+            "type": ["object", "null"],
+            "properties": {
+              "tool_name": {"type": "string"},
+              "arg_name": {"type": "string"},
+              "risk_level": {"enum": ["low", "medium", "high"]},
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+              "reasoning_summary": {"type": "string"}
+            },
+            "additionalProperties": true
+          },
+          "evidence_ids": {"type": "array", "items": {"type": "string"}},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "sensitivity": {"enum": ["normal", "sensitive", "secret", "operator_managed"]},
+          "restorable": {"type": "boolean"}
+        }
+      }
+    },
+    "value_policy": {"type": "string"}
+  }
+}

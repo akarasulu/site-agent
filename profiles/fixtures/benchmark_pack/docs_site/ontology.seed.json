@@ -1,0 +1,8 @@
+{
+  "terms": [
+    {"canonical_name": "api token", "aliases": ["API Token"], "constraints": ["secret value"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "webhook url", "aliases": ["Webhook URL"], "constraints": ["absolute URL"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "build status", "aliases": ["Build Status"], "sources": ["seed"], "confidence": 0.9},
+    {"canonical_name": "documentation version", "aliases": ["Documentation Version"], "sources": ["seed"], "confidence": 0.9}
+  ]
+}

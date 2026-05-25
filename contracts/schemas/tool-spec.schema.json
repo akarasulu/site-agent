@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ToolSpec",
+  "type": "object",
+  "required": ["name", "description", "args", "return_schema", "risk_level", "evidence_ids", "confidence"],
+  "properties": {
+    "name": {"type": "string"},
+    "description": {"type": "string"},
+    "args": {"type": "object"},
+    "return_schema": {"type": "object"},
+    "risk_level": {"enum": ["low", "medium", "high"]},
+    "evidence_ids": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "requires_confirmation": {"type": "boolean"},
+    "dry_run_supported": {"type": "boolean"},
+    "source_type": {"enum": ["canonical_concept", "ui_page", "ui_form", "ui_flow"]}
+  }
+}

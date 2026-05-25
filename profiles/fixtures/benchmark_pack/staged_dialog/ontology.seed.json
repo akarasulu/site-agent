@@ -1,0 +1,24 @@
+{
+  "terms": [
+    {
+      "canonical_name": "rule name",
+      "aliases": ["Rule Name"],
+      "constraints": ["1 to 10 characters"],
+      "sources": ["staged-admin-manual.md"],
+      "confidence": 0.92
+    },
+    {
+      "canonical_name": "service port",
+      "aliases": ["Service Port"],
+      "constraints": ["1 to 65535"],
+      "sources": ["staged-admin-manual.md"],
+      "confidence": 0.92
+    },
+    {
+      "canonical_name": "retry count",
+      "aliases": ["Retry Count"],
+      "sources": ["staged-admin-manual.md"],
+      "confidence": 0.86
+    }
+  ]
+}
