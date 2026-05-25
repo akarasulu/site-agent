@@ -276,7 +276,7 @@ site-agent mcp import --profile my-site --engine-dir /path/to/site-agent
 site-agent mcp import --profile my-site --target codex --config ~/.codex/config.toml --apply
 ```
 
-The generated server is currently a local stdio MCP server. Multiple AI coding tools can share the same generated project and command, but each client usually starts its own MCP process. A centralized one-process MCP service would require an HTTP/SSE transport wrapper.
+The generated server is currently a local stdio MCP server. It supports standard MCP `Content-Length` message framing and ignores notifications such as `notifications/initialized`, so clients can complete the initialize and tool-list handshake reliably. Multiple AI coding tools can share the same generated project and command, but each client usually starts its own MCP process. A centralized one-process MCP service would require an HTTP/SSE transport wrapper.
 
 ### Ansible Collection
 

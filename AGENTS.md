@@ -258,6 +258,7 @@ Implement in this layered order.
 - Prefer calling the generated Python API rather than duplicating browser/action execution logic.
 - Internally map to selector adapters per profile and version through the Python API/runtime layer.
 - Provide a reusable MCP import/install command that emits standard `mcpServers` JSON and supported client config blocks.
+- Serve stdio MCP with standard `Content-Length` framing and ignore notifications so clients can complete initialize and tool-list handshakes.
 - Keep target-specific MCP client setup in generated projects as thin wrappers around the reusable import command.
 - Emit metadata for each tool:
   - description in domain language

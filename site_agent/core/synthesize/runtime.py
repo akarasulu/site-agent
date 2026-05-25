@@ -4,7 +4,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, BinaryIO, TextIO
 from urllib.parse import urlencode, urljoin, urlparse
 from urllib.request import Request, urlopen
 
@@ -329,9 +329,10 @@ def mcp_tool_schema(tool: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def handle_request(package_dir: Path, request: dict[str, Any]) -> dict[str, Any]:
+def handle_request(package_dir: Path, request: dict[str, Any]) -> dict[str, Any] | None:
     request_id = request.get("id")
     method = request.get("method")
+    is_notification = "id" not in request
     try:
         if method == "initialize":
             result = {
@@ -353,18 +354,84 @@ def handle_request(package_dir: Path, request: dict[str, Any]) -> dict[str, Any]
                 "structuredContent": structured,
                 "isError": False,
             }
+        elif is_notification:
+            return None
         else:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": f"Unknown method: {method}"}}
         return {"jsonrpc": "2.0", "id": request_id, "result": result}
     except Exception as exc:
+        if is_notification:
+            return None
         return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32000, "message": str(exc)}}
 
 
+def _write_framed_response(writer: BinaryIO, response: dict[str, Any]) -> None:
+    body = json.dumps(response, sort_keys=True).encode("utf-8")
+    writer.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body)
+    writer.flush()
+
+
+def _serve_framed(package_dir: Path, reader: BinaryIO, writer: BinaryIO, first_header: bytes | None = None) -> None:
+    line = first_header
+    while True:
+        headers: dict[str, str] = {}
+        if line is None:
+            line = reader.readline()
+        if not line:
+            break
+        while line in (b"\r\n", b"\n"):
+            line = reader.readline()
+            if not line:
+                return
+        while line not in (b"\r\n", b"\n", b""):
+            decoded = line.decode("ascii", errors="replace").strip()
+            if ":" in decoded:
+                name, value = decoded.split(":", 1)
+                headers[name.lower()] = value.strip()
+            line = reader.readline()
+        length = int(headers.get("content-length", "0"))
+        if length <= 0:
+            line = None
+            continue
+        body = reader.read(length)
+        if not body:
+            break
+        response = handle_request(package_dir, json.loads(body.decode("utf-8")))
+        if response is not None:
+            _write_framed_response(writer, response)
+        line = None
+
+
+def _serve_binary_json_lines(package_dir: Path, reader: BinaryIO, writer: BinaryIO, first_line: bytes) -> None:
+    line = first_line
+    while line:
+        stripped = line.strip()
+        if stripped:
+            response = handle_request(package_dir, json.loads(stripped.decode("utf-8")))
+            if response is not None:
+                writer.write((json.dumps(response, sort_keys=True) + "\n").encode("utf-8"))
+                writer.flush()
+        line = reader.readline()
+
+
 def serve_json_lines(package_dir: Path, stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> None:
+    reader = getattr(stdin, "buffer", None)
+    writer = getattr(stdout, "buffer", None)
+    if reader is not None and writer is not None:
+        first_line = reader.readline()
+        if not first_line:
+            return
+        if first_line.lower().startswith(b"content-length:"):
+            _serve_framed(package_dir, reader, writer, first_line)
+        else:
+            _serve_binary_json_lines(package_dir, reader, writer, first_line)
+        return
+
     for line in stdin:
         stripped = line.strip()
         if not stripped:
             continue
         response = handle_request(package_dir, json.loads(stripped))
-        stdout.write(json.dumps(response, sort_keys=True) + "\n")
-        stdout.flush()
+        if response is not None:
+            stdout.write(json.dumps(response, sort_keys=True) + "\n")
+            stdout.flush()

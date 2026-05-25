@@ -2,6 +2,14 @@
 
 `site-agent` is the reusable engine package. Target-specific generated projects, such as `zte-agent`, are delivered separately as private repos, zip bundles, internal packages, or operator workspaces.
 
+## Release Notes
+
+### 0.3.1
+
+- Fix generated MCP stdio servers to speak standard `Content-Length` framed JSON-RPC, which lets Codex and other MCP clients complete initialize and `tools/list` handshakes.
+- Ignore MCP notifications, including `notifications/initialized`, instead of sending invalid notification responses.
+- Keep newline-delimited JSON support for local smoke tests and direct probes.
+
 ## Local Install
 
 For normal developer use:

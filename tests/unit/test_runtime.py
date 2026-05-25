@@ -1,5 +1,5 @@
 from pathlib import Path
-from io import StringIO
+from io import BytesIO, StringIO
 import json
 
 from site_agent.core.align.lexical import align_snapshot
@@ -52,6 +52,31 @@ def test_runtime_returns_value_from_private_adapter_binding(tmp_path):
     serve_json_lines(package_dir, stdin, stdout)
     listed = json.loads(stdout.getvalue())
     assert listed["result"]["tools"][0]["name"] == "get_wan_status"
+
+    framed_requests = [
+        {"jsonrpc": "2.0", "id": 3, "method": "initialize", "params": {"protocolVersion": "2024-11-05"}},
+        {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+        {"jsonrpc": "2.0", "id": 4, "method": "tools/list"},
+    ]
+    body = b"".join(
+        f"Content-Length: {len(payload)}\r\n\r\n".encode("ascii") + payload
+        for payload in (json.dumps(request).encode("utf-8") for request in framed_requests)
+    )
+    framed_stdin = type("BinaryText", (), {"buffer": BytesIO(body)})()
+    framed_output = BytesIO()
+    framed_stdout = type("BinaryText", (), {"buffer": framed_output})()
+
+    serve_json_lines(package_dir, framed_stdin, framed_stdout)
+
+    raw = framed_output.getvalue()
+    responses = []
+    while raw:
+        header, raw = raw.split(b"\r\n\r\n", 1)
+        length = int(header.decode("ascii").split(":", 1)[1].strip())
+        payload, raw = raw[:length], raw[length:]
+        responses.append(json.loads(payload))
+    assert [response["id"] for response in responses] == [3, 4]
+    assert responses[1]["result"]["tools"][0]["name"] == "get_wan_status"
 
 
 def test_mcp_import_emits_json_and_installs_codex_block(tmp_path, monkeypatch, capsys):
