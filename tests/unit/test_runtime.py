@@ -3,6 +3,7 @@ from io import StringIO
 import json
 
 from site_agent.core.align.lexical import align_snapshot
+from site_agent.cli import main
 from site_agent.core.models import CrawlSnapshot, DomainTerm, Evidence, UiElement, utc_now
 from site_agent.core.storage import read_json
 from site_agent.core.synthesize.mcp import synthesize_tools, write_mcp_package
@@ -51,3 +52,59 @@ def test_runtime_returns_value_from_private_adapter_binding(tmp_path):
     serve_json_lines(package_dir, stdin, stdout)
     listed = json.loads(stdout.getvalue())
     assert listed["result"]["tools"][0]["name"] == "get_wan_status"
+
+
+def test_mcp_import_emits_json_and_installs_codex_block(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    assert main(["profile", "init", "--name", "demo-site", "--base-url", "https://demo.test"]) == 0
+    capsys.readouterr()
+    write_mcp_package(tmp_path, "demo-site", [], [])
+
+    assert main(["mcp", "import", "--profile", "demo-site", "--target", "json", "--server-name", "demo_router"]) == 0
+    emitted = json.loads(capsys.readouterr().out)
+    server = emitted["mcpServers"]["demo_router"]
+    assert server["args"] == ["-m", "site_agent", "mcp", "serve", "--profile", "demo-site"]
+    assert server["cwd"] == str(tmp_path)
+
+    config_path = tmp_path / "codex.toml"
+    assert (
+        main(
+            [
+                "mcp",
+                "import",
+                "--profile",
+                "demo-site",
+                "--target",
+                "codex",
+                "--server-name",
+                "demo_router",
+                "--config",
+                str(config_path),
+                "--apply",
+            ]
+        )
+        == 0
+    )
+    config = config_path.read_text(encoding="utf-8")
+    assert "[mcp_servers.demo_router]" in config
+    assert "site_agent" in config
+
+    assert (
+        main(
+            [
+                "mcp",
+                "import",
+                "--profile",
+                "demo-site",
+                "--target",
+                "codex",
+                "--server-name",
+                "demo_router",
+                "--config",
+                str(config_path),
+                "--apply",
+            ]
+        )
+        == 0
+    )
+    assert config_path.read_text(encoding="utf-8").count("[mcp_servers.demo_router]") == 1

@@ -204,6 +204,16 @@ site-agent mcp serve --profile my-site
 
 Where practical, generated MCP tools should call the generated Python API rather than duplicating browser/action logic. This keeps agent tooling stable while the Python API owns execution, dry-run, confirmation, and adapter behavior.
 
+Install or export client configuration with:
+
+```bash
+site-agent mcp import --profile my-site --target json
+site-agent mcp import --profile my-site --target codex --apply
+site-agent mcp import --profile my-site --target kimi-code
+```
+
+`json` emits a standard `mcpServers` block for clients that accept MCP JSON. `codex --apply` updates `~/.codex/config.toml` with a marked block that can be safely refreshed. Other AI coding tools can reuse the same command, args, cwd, and env values even when their config wrapper differs.
+
 ### Ansible Collection
 
 The generated Ansible collection is the operator-facing surface:

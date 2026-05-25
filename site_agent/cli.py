@@ -41,6 +41,7 @@ from site_agent.core.synthesize.contracts import contract_from_tools, diff_contr
 from site_agent.core.synthesize.ansible import write_ansible_collection
 from site_agent.core.synthesize.api import write_api_package
 from site_agent.core.synthesize.mcp import synthesize_form_tools, synthesize_tools, synthesize_unmapped_page_tools, write_mcp_package
+from site_agent.core.synthesize.mcp_import import build_mcp_import_spec, install_codex_config, marked_block, render_codex_toml, render_mcp_json
 from site_agent.core.synthesize.runtime import RuntimeErrorForTool, call_tool, serve_json_lines
 
 
@@ -508,6 +509,40 @@ def cmd_mcp_call(args: argparse.Namespace) -> int:
         raise FileNotFoundError(f"No MCP package found. Run: site-agent mcp build --profile {profile.name}")
     call_args = read_json(Path(args.args_json)) if args.args_json else {}
     print(json_dump(call_tool(package_dir, args.tool, call_args, args.mode, args.browser)))
+    return 0
+
+
+def cmd_mcp_import(args: argparse.Namespace) -> int:
+    profile = load_profile(workspace(), args.profile)
+    package_dir = output_root(workspace(), profile.name) / "mcp"
+    if not (package_dir / "server.json").exists():
+        raise FileNotFoundError(f"No MCP package found. Run: site-agent mcp build --profile {profile.name}")
+    spec = build_mcp_import_spec(
+        profile_name=profile.name,
+        server_name=args.server_name,
+        project_dir=Path(args.project_dir) if args.project_dir else workspace(),
+        python_bin=Path(args.python) if args.python else None,
+        engine_dir=Path(args.engine_dir) if args.engine_dir else None,
+    )
+    if args.target == "json":
+        print(render_mcp_json(spec))
+        return 0
+    if args.target == "kimi-code":
+        print(render_mcp_json(spec))
+        print(
+            "\nUse this standard mcpServers JSON in Kimi Code or another MCP client if it accepts that shape. "
+            "If the client uses a different wrapper, keep command, args, cwd, and env unchanged."
+        )
+        return 0
+    block = marked_block("codex", spec.name, render_codex_toml(spec))
+    if not args.apply:
+        print(block, end="")
+        print("\nRun again with --apply to update the Codex config automatically.")
+        return 0
+    config_path = Path(args.config or __import__("os").environ.get("CODEX_CONFIG", "~/.codex/config.toml"))
+    install_codex_config(config_path, spec)
+    print(f"Installed MCP server '{spec.name}' into {config_path.expanduser()}")
+    print("Restart Codex so it reloads MCP configuration.")
     return 0
 
 
@@ -1062,6 +1097,16 @@ def build_parser() -> argparse.ArgumentParser:
     call.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
     call.add_argument("--browser", action="store_true", help="Use the browser-backed runtime for staged ui_flow apply calls.")
     call.set_defaults(func=cmd_mcp_call)
+    mcp_import = mcp_sub.add_parser("import", help="Emit or install MCP client configuration for a generated profile.")
+    mcp_import.add_argument("--profile", required=True)
+    mcp_import.add_argument("--target", choices=["json", "codex", "kimi-code"], default="json")
+    mcp_import.add_argument("--server-name", help="MCP server name exposed to the client. Defaults to the profile name.")
+    mcp_import.add_argument("--project-dir", help="Working directory for the MCP server. Defaults to the current workspace.")
+    mcp_import.add_argument("--python", help="Python executable used to run the MCP server. Defaults to the current interpreter.")
+    mcp_import.add_argument("--engine-dir", help="Optional site-agent source directory to place in PYTHONPATH.")
+    mcp_import.add_argument("--config", help="Target config path. For Codex this defaults to ~/.codex/config.toml.")
+    mcp_import.add_argument("--apply", action="store_true", help="Write the target config when supported.")
+    mcp_import.set_defaults(func=cmd_mcp_import)
     diff = mcp_sub.add_parser("diff")
     diff.add_argument("--profile", required=True)
     diff.add_argument("--baseline", required=True)
