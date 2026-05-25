@@ -5,6 +5,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from site_agent.core.completion import bash_script, complete, fish_script, zsh_script
 from site_agent.core.actions import build_action_report
 from site_agent.core.ai.analyze import build_ai_analysis_report
 from site_agent.core.ai.backends import get_ai_backend
@@ -979,7 +980,25 @@ def cmd_package_build(args: argparse.Namespace) -> int:
     return 0
 
 
-def build_parser() -> argparse.ArgumentParser:
+def cmd_completion_script(args: argparse.Namespace) -> int:
+    scripts = {
+        "bash": bash_script,
+        "zsh": zsh_script,
+        "fish": fish_script,
+    }
+    print(scripts[args.shell](args.program), end="")
+    return 0
+
+
+def cmd_completion_complete(args: argparse.Namespace) -> int:
+    parser = build_parser(include_completion=True)
+    words = args.words[1:] if args.words and args.words[0] == "--" else args.words
+    for item in complete(parser, words, args.cword, workspace()):
+        print(item)
+    return 0
+
+
+def build_parser(include_completion: bool = True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="site-agent", description="Evidence-backed website interaction mapper.")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -1223,6 +1242,18 @@ def build_parser() -> argparse.ArgumentParser:
     package_build.add_argument("--public-only", action="store_true", help="Exclude private adapter/profile artifacts from the package.")
     package_build.add_argument("--no-zip", action="store_true", help="Write only the package directory, not a zip bundle.")
     package_build.set_defaults(func=cmd_package_build)
+
+    if include_completion:
+        completion = sub.add_parser("completion", help="Generate shell completion scripts.")
+        completion_sub = completion.add_subparsers(dest="completion_command", required=True)
+        for shell in ("bash", "zsh", "fish"):
+            completion_script = completion_sub.add_parser(shell, help=f"Print {shell} completion script.")
+            completion_script.add_argument("--program", default="site-agent", help="Program name to register for completion.")
+            completion_script.set_defaults(func=cmd_completion_script, shell=shell)
+        completion_complete = completion_sub.add_parser("complete", help=argparse.SUPPRESS)
+        completion_complete.add_argument("--cword", type=int, required=True)
+        completion_complete.add_argument("words", nargs=argparse.REMAINDER)
+        completion_complete.set_defaults(func=cmd_completion_complete)
     return parser
 
 

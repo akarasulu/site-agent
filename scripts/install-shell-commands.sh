@@ -6,10 +6,11 @@ BIN_DIR="${SITE_AGENT_BIN_DIR:-$HOME/.local/bin}"
 VENV_DIR="${SITE_AGENT_INSTALL_VENV:-$HOME/.local/share/site-agent/venv}"
 INSTALL_EXTRAS="${SITE_AGENT_INSTALL_EXTRAS:-crawl}"
 INSTALL_PLAYWRIGHT="${SITE_AGENT_INSTALL_PLAYWRIGHT:-1}"
+INSTALL_COMPLETION="${SITE_AGENT_INSTALL_COMPLETION:-1}"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/install-shell-commands.sh [--bin-dir DIR] [--venv-dir DIR] [--no-playwright]
+Usage: scripts/install-shell-commands.sh [--bin-dir DIR] [--venv-dir DIR] [--no-playwright] [--no-completion]
 
 Installs the site-agent shell command for the current user without sudo:
 
@@ -20,6 +21,7 @@ Environment overrides:
   SITE_AGENT_INSTALL_VENV
   SITE_AGENT_INSTALL_EXTRAS
   SITE_AGENT_INSTALL_PLAYWRIGHT=0
+  SITE_AGENT_INSTALL_COMPLETION=0
 EOF
 }
 
@@ -35,6 +37,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-playwright)
       INSTALL_PLAYWRIGHT=0
+      shift
+      ;;
+    --no-completion)
+      INSTALL_COMPLETION=0
       shift
       ;;
     -h|--help)
@@ -63,10 +69,26 @@ fi
 
 ln -sfn "$VENV_DIR/bin/site-agent" "$BIN_DIR/site-agent"
 
+if [[ "$INSTALL_COMPLETION" == "1" ]]; then
+  mkdir -p "$HOME/.local/share/bash-completion/completions" "$HOME/.config/fish/completions"
+  "$BIN_DIR/site-agent" completion bash > "$HOME/.local/share/bash-completion/completions/site-agent"
+  "$BIN_DIR/site-agent" completion fish > "$HOME/.config/fish/completions/site-agent.fish"
+  if [[ -d "$HOME/.zfunc" ]]; then
+    "$BIN_DIR/site-agent" completion zsh > "$HOME/.zfunc/_site-agent"
+  fi
+fi
+
 echo "Installed: $BIN_DIR/site-agent"
+if [[ "$INSTALL_COMPLETION" == "1" ]]; then
+  echo "Installed bash/fish completion files."
+  if [[ -d "$HOME/.zfunc" ]]; then
+    echo "Installed zsh completion file: $HOME/.zfunc/_site-agent"
+  else
+    echo "For zsh completion, create ~/.zfunc and run: site-agent completion zsh > ~/.zfunc/_site-agent"
+  fi
+fi
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
   echo "Add this to your shell profile if needed:"
   echo "  export PATH=\"$BIN_DIR:\$PATH\""
 fi
 echo "Try: site-agent --help"
-

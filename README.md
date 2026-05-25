@@ -61,6 +61,20 @@ scripts/install-shell-commands.sh --venv-dir ~/.local/share/site-agent/venv
 scripts/install-shell-commands.sh --no-playwright
 ```
 
+Enable shell completion with:
+
+```bash
+site-agent completion bash > ~/.local/share/bash-completion/completions/site-agent
+site-agent completion zsh > ~/.zfunc/_site-agent
+site-agent completion fish > ~/.config/fish/completions/site-agent.fish
+```
+
+For one-off use:
+
+```bash
+source <(site-agent completion bash)
+```
+
 ## Mock App Harness
 
 The repository includes an OpsBoard fixture under `profiles/fixtures/mock_app` for fast, product-agnostic iteration.
