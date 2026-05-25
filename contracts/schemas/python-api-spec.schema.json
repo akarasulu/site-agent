@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PythonApiSpec",
+  "type": "object",
+  "required": ["package_name", "version", "methods", "evidence_ids", "adapter_version"],
+  "properties": {
+    "package_name": {"type": "string"},
+    "version": {"type": "string"},
+    "adapter_version": {"type": "string"},
+    "evidence_ids": {"type": "array", "items": {"type": "string"}},
+    "methods": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "args", "return_schema", "risk_level", "dry_run_supported", "evidence_ids", "backing_tool"],
+        "properties": {
+          "name": {"type": "string"},
+          "description": {"type": "string"},
+          "args": {"type": "object"},
+          "return_schema": {"type": "object"},
+          "risk_level": {"enum": ["low", "medium", "high"]},
+          "dry_run_supported": {"type": "boolean"},
+          "evidence_ids": {"type": "array", "items": {"type": "string"}},
+          "backing_tool": {"type": "string"}
+        }
+      }
+    }
+  }
+}

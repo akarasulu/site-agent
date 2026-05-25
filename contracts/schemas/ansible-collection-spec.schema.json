@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnsibleCollectionSpec",
+  "type": "object",
+  "required": ["namespace", "name", "version", "modules", "evidence_ids", "python_api_dependency"],
+  "properties": {
+    "namespace": {"type": "string"},
+    "name": {"type": "string"},
+    "version": {"type": "string"},
+    "python_api_dependency": {"type": "string"},
+    "evidence_ids": {"type": "array", "items": {"type": "string"}},
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "options", "supports_check_mode", "idempotence_level", "risk_level", "evidence_ids", "backing_python_method"],
+        "properties": {
+          "name": {"type": "string"},
+          "description": {"type": "string"},
+          "options": {"type": "object"},
+          "supports_check_mode": {"type": "boolean"},
+          "idempotence_level": {"enum": ["full", "partial", "none"]},
+          "risk_level": {"enum": ["low", "medium", "high"]},
+          "evidence_ids": {"type": "array", "items": {"type": "string"}},
+          "backing_python_method": {"type": "string"}
+        }
+      }
+    }
+  }
+}

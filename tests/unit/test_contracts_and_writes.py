@@ -1,4 +1,6 @@
 from pathlib import Path
+import importlib
+import sys
 
 from site_agent.cli import main
 from site_agent.core.models import CrawlSnapshot, Evidence, Form, InteractionFlow, Page, UiElement, utc_now
@@ -64,6 +66,62 @@ def test_contract_diff_and_write_tool_dry_run(tmp_path, monkeypatch):
     write_json(baseline, read_json(Path("output/opsboard/mcp/contract.json")))
     assert main(["mcp", "diff", "--profile", "opsboard", "--baseline", str(baseline)]) == 0
     assert main(["mcp", "refresh-adapter", "--profile", "opsboard", "--include-writes"]) == 0
+
+
+def test_generated_python_api_imports_reads_and_dry_runs_writes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    repo = Path(__file__).resolve().parents[2]
+    fixture = repo / "profiles" / "fixtures" / "mock_app"
+    assert main(["profile", "init", "--name", "opsboard", "--base-url", "http://127.0.0.1:8080"]) == 0
+    write_json(Path("profiles/opsboard/ontology.seed.json"), read_json(fixture / "ontology.seed.json"))
+    assert main(["crawl", "run", "--profile", "opsboard", "--fixture-site", str(fixture / "site")]) == 0
+    assert main(["schema", "review", "--profile", "opsboard"]) == 0
+    assert main(["api", "build", "--profile", "opsboard"]) == 0
+    assert Path("output/opsboard/mcp/tools.json").exists()
+
+    api_spec = read_json(Path("output/opsboard/api/api-spec.json"))
+    assert api_spec["package_name"] == "opsboard_client"
+    assert any(method["name"] == "save_settings" for method in api_spec["methods"])
+    server = read_json(Path("output/opsboard/mcp/server.json"))
+    assert server["python_api"]["package_name"] == "opsboard_client"
+
+    sys.path.insert(0, str(Path("output/opsboard/api").resolve()))
+    try:
+        module = importlib.import_module("opsboard_client")
+        client = module.OpsboardClient.from_package_dir(Path("output/opsboard/mcp"))
+        result = client.save_settings(
+            alert_email="ops@example.test",
+            maintenance_window="Sunday 02:00 UTC",
+            retention_days="30",
+        )
+        assert result["status"] == "dry_run"
+        delegated = call_tool(Path("output/opsboard/mcp"), "save_settings", {"alert_email": "ops@example.test"})
+        assert delegated["execution_surface"] == "python_api"
+    finally:
+        sys.path = [entry for entry in sys.path if entry != str(Path("output/opsboard/api").resolve())]
+
+
+def test_generated_ansible_collection_wraps_python_api(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    repo = Path(__file__).resolve().parents[2]
+    fixture = repo / "profiles" / "fixtures" / "mock_app"
+    assert main(["profile", "init", "--name", "opsboard", "--base-url", "http://127.0.0.1:8080"]) == 0
+    write_json(Path("profiles/opsboard/ontology.seed.json"), read_json(fixture / "ontology.seed.json"))
+    assert main(["crawl", "run", "--profile", "opsboard", "--fixture-site", str(fixture / "site")]) == 0
+    assert main(["schema", "review", "--profile", "opsboard"]) == 0
+    assert main(["mcp", "build", "--profile", "opsboard"]) == 0
+    assert main(["api", "build", "--profile", "opsboard"]) == 0
+    assert main(["ansible", "build", "--profile", "opsboard"]) == 0
+
+    spec = read_json(Path("output/opsboard/ansible/ansible-spec.json"))
+    assert spec["python_api_dependency"] == "opsboard_client"
+    module_path = Path("output/opsboard/ansible/ansible_collections/site_agent/opsboard/plugins/modules/opsboard_save_settings.py")
+    assert module_path.exists()
+    source = module_path.read_text(encoding="utf-8")
+    assert "load_client" in source
+    assert "client.save_settings" in source
+    module_utils = Path("output/opsboard/ansible/ansible_collections/site_agent/opsboard/plugins/module_utils/client.py").read_text(encoding="utf-8")
+    assert "from opsboard_client import OpsboardClient" in module_utils
 
 
 def test_mcp_build_includes_ui_backed_page_and_form_tools_by_default(tmp_path, monkeypatch):
@@ -233,6 +291,8 @@ def test_package_build_creates_rag_bundle_with_private_boundary(tmp_path, monkey
     assert main(["crawl", "run", "--profile", "opsboard", "--fixture-site", str(fixture / "site")]) == 0
     assert main(["schema", "review", "--profile", "opsboard"]) == 0
     assert main(["mcp", "build", "--profile", "opsboard"]) == 0
+    assert main(["api", "build", "--profile", "opsboard"]) == 0
+    assert main(["ansible", "build", "--profile", "opsboard"]) == 0
     assert main(["config", "coverage", "--profile", "opsboard"]) == 0
     assert main(["package", "build", "--profile", "opsboard"]) == 0
 
@@ -240,12 +300,16 @@ def test_package_build_creates_rag_bundle_with_private_boundary(tmp_path, monkey
     package_dir = next(path for path in package_dirs if path.is_dir())
     manifest = read_json(package_dir / "manifest.json")
     assert manifest["counts"]["tools"] > 0
+    assert manifest["counts"]["api_methods"] > 0
+    assert manifest["counts"]["ansible_modules"] > 0
     assert manifest["counts"]["rag_chunks"] > 0
     assert manifest["artifact_classes"]["public"]["safe_for_agent_context"]
     assert not manifest["artifact_classes"]["private"]["safe_for_agent_context"]
     assert (package_dir / "rag/chunks.jsonl").exists()
     assert "configuration_coverage" in (package_dir / "rag/chunks.jsonl").read_text(encoding="utf-8")
     assert (package_dir / "public/mcp/tools.json").exists()
+    assert (package_dir / "public/api/api-spec.json").exists()
+    assert (package_dir / "public/ansible/ansible-spec.json").exists()
     assert (package_dir / "private/adapter.bindings.json").exists()
     assert (Path("output/opsboard/packages") / f"{package_dir.name}.zip").exists()
 

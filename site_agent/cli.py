@@ -38,6 +38,8 @@ from site_agent.core.redact import redact_schema, redact_snapshot
 from site_agent.core.review import ReviewError, apply_review, latest_schema, review_queue, write_reviewed_schema
 from site_agent.core.storage import latest_json, read_json, write_json
 from site_agent.core.synthesize.contracts import contract_from_tools, diff_contracts, write_contract
+from site_agent.core.synthesize.ansible import write_ansible_collection
+from site_agent.core.synthesize.api import write_api_package
 from site_agent.core.synthesize.mcp import synthesize_form_tools, synthesize_tools, synthesize_unmapped_page_tools, write_mcp_package
 from site_agent.core.synthesize.runtime import RuntimeErrorForTool, call_tool, serve_json_lines
 
@@ -383,8 +385,7 @@ def cmd_schema_decide(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_mcp_build(args: argparse.Namespace) -> int:
-    profile = load_profile(workspace(), args.profile)
+def synthesize_profile_tooling(profile, no_page_tools: bool = False, no_action_tools: bool = False):
     _, schema = latest_schema(output_root(workspace(), profile.name) / "schema")
     snapshot = load_latest_snapshot(profile.name)
     selector_lookup = {element.id: element.selector_fingerprint for element in snapshot.elements}
@@ -400,15 +401,23 @@ def cmd_mcp_build(args: argparse.Namespace) -> int:
     tools, bindings = synthesize_tools(profile.id, schema, selector_lookup, value_lookup, description_lookup)
     covered_read_element_ids = {mapping.ui_element_id for mapping in schema.mappings if mapping.status == "ready"}
     seen_tool_names = {tool.name for tool in tools}
-    if not args.no_page_tools:
+    if not no_page_tools:
         page_tools, page_bindings = synthesize_unmapped_page_tools(profile.id, snapshot, covered_read_element_ids, seen_tool_names)
         tools.extend(page_tools)
         bindings.extend(page_bindings)
-    if not args.no_action_tools:
+    if not no_action_tools:
         write_tools, write_bindings = synthesize_form_tools(profile.id, snapshot, seen_tool_names)
         tools.extend(write_tools)
         bindings.extend(write_bindings)
+    return snapshot, tools, bindings
+
+
+def cmd_mcp_build(args: argparse.Namespace) -> int:
+    profile = load_profile(workspace(), args.profile)
+    snapshot, tools, bindings = synthesize_profile_tooling(profile, args.no_page_tools, args.no_action_tools)
     write_mcp_package(workspace(), profile.name, tools, bindings, profile.base_url if args.include_writes else None)
+    if (output_root(workspace(), profile.name) / "api" / "api-spec.json").exists():
+        write_api_package(workspace(), profile.name, [tool.__dict__ if hasattr(tool, "__dict__") else tool for tool in tools])
     write_contract(output_root(workspace(), profile.name) / "mcp")
     contract_report = contract_quality_report(profile, tools)
     contract_report_path = output_root(workspace(), profile.name) / "reports" / f"contract-quality-{snapshot.run_id}.json"
@@ -421,6 +430,47 @@ def cmd_mcp_build(args: argparse.Namespace) -> int:
     if contract_report["failures"]:
         print(f"Contract failures: {len(contract_report['failures'])}")
     print(f"Next: site-agent mcp serve --profile {profile.name}")
+    return 0
+
+
+def cmd_api_build(args: argparse.Namespace) -> int:
+    profile = load_profile(workspace(), args.profile)
+    package_dir = output_root(workspace(), profile.name) / "mcp"
+    tools_path = package_dir / "tools.json"
+    if not tools_path.exists():
+        _, tools, bindings = synthesize_profile_tooling(profile, args.no_page_tools, args.no_action_tools)
+        write_mcp_package(workspace(), profile.name, tools, bindings, profile.base_url)
+        write_contract(output_root(workspace(), profile.name) / "mcp")
+    api_dir, spec = write_api_package(workspace(), profile.name, read_json(tools_path).get("tools", []))
+    print(f"Generated Python API package: {api_dir}")
+    print(f"API methods: {len(spec.methods)}; package={spec.package_name}")
+    print(f"Next: site-agent ansible build --profile {profile.name} or site-agent mcp serve --profile {profile.name}")
+    return 0
+
+
+def cmd_ansible_build(args: argparse.Namespace) -> int:
+    profile = load_profile(workspace(), args.profile)
+    package_dir = output_root(workspace(), profile.name) / "mcp"
+    tools_path = package_dir / "tools.json"
+    if not tools_path.exists():
+        raise FileNotFoundError(f"No MCP package found. Run: site-agent mcp build --profile {profile.name}")
+    api_dir = output_root(workspace(), profile.name) / "api"
+    if not (api_dir / "api-spec.json").exists():
+        write_api_package(workspace(), profile.name, read_json(tools_path).get("tools", []))
+    api_spec = read_json(api_dir / "api-spec.json")
+    from site_agent.core.models import PythonApiMethod, PythonApiSpec
+
+    spec_obj = PythonApiSpec(
+        package_name=api_spec["package_name"],
+        version=api_spec["version"],
+        methods=[PythonApiMethod(**method) for method in api_spec.get("methods", [])],
+        evidence_ids=api_spec.get("evidence_ids", []),
+        adapter_version=api_spec.get("adapter_version", "0.1.0"),
+    )
+    collection_dir, collection_spec = write_ansible_collection(workspace(), profile.name, read_json(tools_path).get("tools", []), spec_obj)
+    print(f"Generated Ansible collection: {collection_dir}")
+    print(f"Ansible modules: {len(collection_spec.modules)}; collection={collection_spec.namespace}.{collection_spec.name}")
+    print(f"Next: run ansible-playbook with ANSIBLE_COLLECTIONS_PATH={output_root(workspace(), profile.name) / 'ansible'}")
     return 0
 
 
@@ -985,6 +1035,14 @@ def build_parser() -> argparse.ArgumentParser:
     edit.add_argument("--note")
     edit.set_defaults(func=cmd_schema_decide)
 
+    api = sub.add_parser("api")
+    api_sub = api.add_subparsers(dest="api_command", required=True)
+    api_build = api_sub.add_parser("build")
+    api_build.add_argument("--profile", required=True)
+    api_build.add_argument("--no-action-tools", action="store_true", help="Skip generated form/action candidate methods.")
+    api_build.add_argument("--no-page-tools", action="store_true", help="Skip generated UI-backed page/status read methods.")
+    api_build.set_defaults(func=cmd_api_build)
+
     mcp = sub.add_parser("mcp")
     mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
     build = mcp_sub.add_parser("build")
@@ -1013,6 +1071,12 @@ def build_parser() -> argparse.ArgumentParser:
     refresh.add_argument("--profile", required=True)
     refresh.add_argument("--include-writes", action="store_true")
     refresh.set_defaults(func=cmd_mcp_refresh_adapter)
+
+    ansible = sub.add_parser("ansible")
+    ansible_sub = ansible.add_subparsers(dest="ansible_command", required=True)
+    ansible_build = ansible_sub.add_parser("build")
+    ansible_build.add_argument("--profile", required=True)
+    ansible_build.set_defaults(func=cmd_ansible_build)
 
     drift = sub.add_parser("drift")
     drift_sub = drift.add_subparsers(dest="drift_command", required=True)

@@ -169,6 +169,49 @@ class AdapterBinding:
 
 
 @dataclass
+class PythonApiMethod:
+    name: str
+    description: str
+    args: dict[str, Any]
+    return_schema: dict[str, Any]
+    risk_level: RiskLevel
+    dry_run_supported: bool
+    evidence_ids: list[str]
+    backing_tool: str
+
+
+@dataclass
+class PythonApiSpec:
+    package_name: str
+    version: str
+    methods: list[PythonApiMethod]
+    evidence_ids: list[str]
+    adapter_version: str = "0.1.0"
+
+
+@dataclass
+class AnsibleModuleSpec:
+    name: str
+    description: str
+    options: dict[str, Any]
+    supports_check_mode: bool
+    idempotence_level: Literal["full", "partial", "none"]
+    risk_level: RiskLevel
+    evidence_ids: list[str]
+    backing_python_method: str
+
+
+@dataclass
+class AnsibleCollectionSpec:
+    namespace: str
+    name: str
+    version: str
+    modules: list[AnsibleModuleSpec]
+    evidence_ids: list[str]
+    python_api_dependency: str
+
+
+@dataclass
 class DriftFinding:
     kind: str
     severity: Literal["info", "warning", "error"]

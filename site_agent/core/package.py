@@ -214,6 +214,8 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
     tools_path = root / "mcp" / "tools.json"
     contract_path = root / "mcp" / "contract.json"
     bindings_path = root / "mcp" / "adapter.bindings.json"
+    api_dir = root / "api"
+    ansible_dir = root / "ansible"
     if not tools_path.exists() or not contract_path.exists():
         raise FileNotFoundError(f"MCP artifacts missing for profile '{profile.name}'. Run: site-agent mcp build --profile {profile.name}")
 
@@ -232,6 +234,11 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
     copied = [
         copy_json_artifact(contract_path, package_dir / "public" / "mcp" / "contract.json", profile.crawl.redaction_patterns),
     ]
+    if (api_dir / "api-spec.json").exists():
+        copied.append(copy_json_artifact(api_dir / "api-spec.json", package_dir / "public" / "api" / "api-spec.json", profile.crawl.redaction_patterns))
+        copied.append(copy_json_artifact(api_dir / "evidence.json", package_dir / "public" / "api" / "evidence.json", profile.crawl.redaction_patterns))
+    if (ansible_dir / "ansible-spec.json").exists():
+        copied.append(copy_json_artifact(ansible_dir / "ansible-spec.json", package_dir / "public" / "ansible" / "ansible-spec.json", profile.crawl.redaction_patterns))
     identity_candidates = build_identity_candidates(snapshot, profile.crawl.redaction_patterns)
     if include_private:
         copied.append(copy_json_artifact(bindings_path, package_dir / "private" / "adapter.bindings.json", profile.crawl.redaction_patterns))
@@ -308,6 +315,8 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
             "forms": len(snapshot.get("forms", [])),
             "elements": len(snapshot.get("elements", [])),
             "tools": len(tools.get("tools", [])),
+            "api_methods": len(read_json(api_dir / "api-spec.json").get("methods", [])) if (api_dir / "api-spec.json").exists() else 0,
+            "ansible_modules": len(read_json(ansible_dir / "ansible-spec.json").get("modules", [])) if (ansible_dir / "ansible-spec.json").exists() else 0,
             "rag_chunks": len(rag_chunks),
             "reports": len(report_entries),
         },

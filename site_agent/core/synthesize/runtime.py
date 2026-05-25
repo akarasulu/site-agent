@@ -38,6 +38,22 @@ def list_tools(package_dir: Path) -> list[dict[str, Any]]:
     ]
 
 
+def call_generated_python_api(package_dir: Path, server: dict[str, Any], tool_name: str, args: dict[str, Any], mode: str, browser: bool) -> dict[str, Any] | None:
+    api = server.get("python_api") or {}
+    package_name = api.get("package_name")
+    client_class_name = api.get("client_class")
+    api_path = api.get("path")
+    if not package_name or not client_class_name or not api_path:
+        return None
+    root = (package_dir / api_path).resolve() if not Path(api_path).is_absolute() else Path(api_path)
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    module = __import__(package_name, fromlist=[client_class_name])
+    client_class = getattr(module, client_class_name)
+    client = client_class.from_package_dir(package_dir)
+    return client.call_tool(tool_name, args, mode=mode, browser=browser)
+
+
 def browser_page_url(server: dict[str, Any], adapter: dict[str, Any]) -> str:
     base_url = (server.get("base_url") or "").rstrip("/")
     page_url = adapter.get("page_url") or base_url
@@ -194,10 +210,22 @@ def browser_apply_staged_action(server: dict[str, Any], tool: dict[str, Any], ad
             browser.close()
 
 
-def call_tool(package_dir: Path, tool_name: str, args: dict[str, Any] | None = None, mode: str = "dry-run", browser: bool = False) -> dict[str, Any]:
+def call_tool(
+    package_dir: Path,
+    tool_name: str,
+    args: dict[str, Any] | None = None,
+    mode: str = "dry-run",
+    browser: bool = False,
+    use_python_api: bool = True,
+) -> dict[str, Any]:
     args = args or {}
     tools, bindings = load_package(package_dir)
     server = load_server(package_dir)
+    if use_python_api:
+        delegated = call_generated_python_api(package_dir, server, tool_name, args, mode, browser)
+        if delegated is not None:
+            delegated.setdefault("execution_surface", "python_api")
+            return delegated
     tool_by_name = {tool["name"]: tool for tool in tools}
     binding_by_name = {binding["tool_name"]: binding for binding in bindings}
     if tool_name not in tool_by_name:
