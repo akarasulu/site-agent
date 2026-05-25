@@ -39,6 +39,18 @@ pip install -e ".[crawl]"
 playwright install chromium
 ```
 
+Install the shell command for the current user with:
+
+```bash
+scripts/install-shell-commands.sh
+```
+
+That creates an isolated venv under `~/.local/share/site-agent/venv` and links `site-agent` into `~/.local/bin`. Make sure `~/.local/bin` is on `PATH`, then run:
+
+```bash
+site-agent --help
+```
+
 ## Mock App Harness
 
 The repository includes an OpsBoard fixture under `profiles/fixtures/mock_app` for fast, product-agnostic iteration.
