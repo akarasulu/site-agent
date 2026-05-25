@@ -4,6 +4,13 @@
 
 The project core is product-agnostic. Target-specific behavior belongs in profiles and adapters.
 
+## Documentation
+
+- [Release and packaging](docs/release.md): PyPI, pipx, Docker, and generated-target delivery.
+- [Config versioning design](contracts/config-versioning-design.md): save, diff, restore-plan, and restore guardrails.
+- [Generated automation surfaces](contracts/generated-automation-surfaces.md): Python API, MCP, and Ansible generation contracts.
+- [Interaction flow design](contracts/interaction-flow-design.md): staged add/edit/delete flow discovery.
+
 ## Quick Start
 
 ```bash
@@ -355,7 +362,7 @@ The package includes public schema/tool metadata, interaction graph, ontology, r
 
 As Python API and Ansible generation land, packages should include those generated artifacts or manifests pointing to them, so agents and operators can choose the right surface for the task.
 
-## Release Artifacts
+## Distribution
 
 The reusable engine is packaged as the `site-agent` Python distribution. Target-specific generated projects are not bundled into the core package.
 

@@ -49,7 +49,7 @@ python -m twine check dist/*
 
 ```bash
 python -m twine upload --repository testpypi dist/*
-python -m pipx install --index-url https://test.pypi.org/simple/ --pip-args="--extra-index-url https://pypi.org/simple" "site-agent[crawl]"
+pipx install --index-url https://test.pypi.org/simple/ --pip-args="--extra-index-url https://pypi.org/simple" "site-agent[crawl]"
 ```
 
 ## PyPI
@@ -86,6 +86,14 @@ ghcr.io/akarasulu/site-agent
 
 Generated profile projects should not be shipped in the core PyPI package.
 
+Target projects can be delivered as:
+
+- a private git repository
+- a zip bundle from `site-agent package build`
+- an internal PyPI package
+- a Docker image containing the target workspace
+- an operator workspace copied next to a `site-agent` install
+
 Use:
 
 ```bash
@@ -93,4 +101,3 @@ site-agent package build --profile my-site
 ```
 
 to create a knowledge bundle containing schema, MCP metadata, API/Ansible manifests, reports, and RAG chunks. Private adapter/profile artifacts remain separated under `private/` unless `--public-only` is used.
-
