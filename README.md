@@ -32,11 +32,20 @@ That primary workflow is intentionally short:
 8. Build a package containing evidence, schema, generated contracts, reports, and RAG chunks.
 9. Re-run drift and quality checks when the UI changes.
 
-Install browser crawling support with:
+Install from PyPI with `pipx`:
+
+```bash
+pipx install "site-agent[crawl]"
+site-agent install browsers
+site-agent doctor
+```
+
+Install from a checkout with:
 
 ```bash
 pip install -e ".[crawl]"
-playwright install chromium
+site-agent install browsers
+site-agent doctor
 ```
 
 Install the shell command for the current user with:
@@ -345,3 +354,17 @@ site-agent package build --profile my-site
 The package includes public schema/tool metadata, interaction graph, ontology, reports, and RAG chunks. Private adapter bindings and profile data are separated under `private/` when included.
 
 As Python API and Ansible generation land, packages should include those generated artifacts or manifests pointing to them, so agents and operators can choose the right surface for the task.
+
+## Release Artifacts
+
+The reusable engine is packaged as the `site-agent` Python distribution. Target-specific generated projects are not bundled into the core package.
+
+Supported delivery paths:
+
+- PyPI package for the `site-agent` CLI and Python modules.
+- `pipx` install for developer workstations.
+- Docker image for repeatable crawl environments.
+- `site-agent package build` zip bundles for generated profile knowledge packages.
+- Separate target projects, such as `zte-agent`, for generated MCP/API/Ansible artifacts and settings repos.
+
+Release notes and commands are in [docs/release.md](docs/release.md).

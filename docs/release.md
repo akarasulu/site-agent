@@ -1,0 +1,96 @@
+# Release And Packaging
+
+`site-agent` is the reusable engine package. Target-specific generated projects, such as `zte-agent`, are delivered separately as private repos, zip bundles, internal packages, or operator workspaces.
+
+## Local Install
+
+For normal developer use:
+
+```bash
+pipx install "site-agent[crawl]"
+site-agent install browsers
+site-agent doctor
+```
+
+From a checkout:
+
+```bash
+pipx install -e ".[crawl]"
+site-agent install browsers
+site-agent doctor
+```
+
+Without `pipx`:
+
+```bash
+python -m pip install "site-agent[crawl]"
+site-agent install browsers
+```
+
+## Shell Command Installer
+
+The checkout helper installs a dedicated user venv and links `site-agent` into `~/.local/bin`:
+
+```bash
+scripts/install-shell-commands.sh
+```
+
+It also installs bash and fish completion by default. Use `--no-completion` or `--no-playwright` to skip those steps.
+
+## Build
+
+```bash
+python -m pip install -e ".[release]"
+python -m build
+python -m twine check dist/*
+```
+
+## TestPyPI
+
+```bash
+python -m twine upload --repository testpypi dist/*
+python -m pipx install --index-url https://test.pypi.org/simple/ --pip-args="--extra-index-url https://pypi.org/simple" "site-agent[crawl]"
+```
+
+## PyPI
+
+Preferred deployment is GitHub Actions trusted publishing:
+
+1. Create the `site-agent` project on PyPI.
+2. Configure PyPI trusted publisher for `akarasulu/site-agent`, workflow `publish-pypi.yml`, environment `pypi`.
+3. Create a GitHub release from a matching signed tag.
+4. The publish workflow builds and uploads the package.
+
+Manual fallback:
+
+```bash
+python -m twine upload dist/*
+```
+
+## Docker
+
+Build locally:
+
+```bash
+docker build -t site-agent .
+docker run --rm -v "$PWD:/workspace" site-agent --help
+```
+
+GitHub Actions publishes images to:
+
+```text
+ghcr.io/akarasulu/site-agent
+```
+
+## Generated Target Packages
+
+Generated profile projects should not be shipped in the core PyPI package.
+
+Use:
+
+```bash
+site-agent package build --profile my-site
+```
+
+to create a knowledge bundle containing schema, MCP metadata, API/Ansible manifests, reports, and RAG chunks. Private adapter/profile artifacts remain separated under `private/` unless `--public-only` is used.
+

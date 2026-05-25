@@ -4,15 +4,37 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "site-agent"
-version = "0.1.0"
+version = "0.3.0"
 description = "Generic, evidence-backed website interaction mapper and MCP generator."
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [
+  {name = "Alex O. Karasulu"}
+]
+keywords = ["mcp", "playwright", "automation", "crawler", "ansible", "ai-agents"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Internet :: WWW/HTTP :: Browsers",
+  "Topic :: Software Development :: Code Generators",
+  "Topic :: System :: Systems Administration",
+]
 dependencies = []
 
 [project.optional-dependencies]
 crawl = ["playwright>=1.44"]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "build>=1.2", "twine>=5.0"]
+release = ["build>=1.2", "twine>=5.0"]
+
+[project.urls]
+Homepage = "https://github.com/akarasulu/site-agent"
+Repository = "https://github.com/akarasulu/site-agent"
+Issues = "https://github.com/akarasulu/site-agent/issues"
 
 [project.scripts]
 site-agent = "site_agent.cli:main"

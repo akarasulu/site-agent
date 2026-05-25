@@ -32,6 +32,7 @@ Target systems are external profiles.
   - Ansible collection synthesis.
   - Configuration state snapshot, diff, and restore planning.
   - Drift detection and validation.
+  - Package metadata, shell command installation, completion, and release automation for the reusable engine.
 - Profiles (external fixtures/config packs):
   - Domain ontology seed.
   - Site auth flow strategy.
@@ -70,9 +71,13 @@ Recommended CLI shape (or equivalent UI actions):
 - `site-agent config restore-readiness`
 - `site-agent config restore`
 - `site-agent drift check`
+- `site-agent doctor`
+- `site-agent install browsers`
 
 UX requirements:
 - Every command prints next-step guidance.
+- Installed package exposes `site-agent` as a console command.
+- Optional browser dependencies have clear post-install commands and diagnostics.
 - Destructive or high-risk actions require explicit confirmation.
 - Errors must include actionable fixes, not just stack traces.
 - Low-confidence mappings are shown in a review queue.
@@ -508,6 +513,8 @@ Each benchmark profile must define:
 
 ## Deliverables
 Ship these outputs:
+- PyPI-ready `site-agent` package metadata and console script.
+- Docker image definition for repeatable crawl/runtime environments.
 - Canonical ontology JSON.
 - Interaction graph JSON.
 - Mapped schema JSON with evidence and confidence.

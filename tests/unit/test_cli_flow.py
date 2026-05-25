@@ -36,3 +36,19 @@ def test_fixture_site_crawl_prints_progress(tmp_path, monkeypatch, capsys):
     assert "Crawl progress:" in output
     assert "total unknown" in output
     assert "pages=" in output
+
+
+def test_doctor_and_install_browser_commands(monkeypatch, capsys):
+    assert main(["doctor", "--no-playwright"]) == 0
+    assert "python" in capsys.readouterr().out
+
+    called = {}
+
+    def fake_install(browser):
+        called["browser"] = browser
+        return 0
+
+    monkeypatch.setattr("site_agent.cli.run_playwright_install", fake_install)
+    assert main(["install", "browsers", "--browser", "chromium"]) == 0
+    assert called["browser"] == "chromium"
+    assert "Installed Playwright browser" in capsys.readouterr().out

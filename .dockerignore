@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__
+*.pyc
+dist
+build
+*.egg-info
+output
+settings-repos
+profiles/*/auth
+site-agent-openai.key
+

@@ -27,6 +27,7 @@ from site_agent.core.config_versioning import (
 )
 from site_agent.core.crawl.playwright import CrawlError, crawl_fixture_site, crawl_html_fixture, crawl_profile
 from site_agent.core.debug import build_debug_report
+from site_agent.core.doctor import doctor_checks, run_playwright_install
 from site_agent.core.drift.check import compare_snapshots
 from site_agent.core.ingest.docs import build_ontology_artifact
 from site_agent.core.merge import merge_snapshots, write_merged_snapshot
@@ -998,6 +999,29 @@ def cmd_completion_complete(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    results = doctor_checks(include_playwright=not args.no_playwright)
+    for result in results:
+        status = "ok" if result.ok else "missing"
+        print(f"{status:7} {result.name}: {result.detail}")
+        if not result.ok and result.fix:
+            print(f"        fix: {result.fix}")
+    failed = [result for result in results if not result.ok]
+    if failed:
+        print("Next: apply the suggested fixes, then run site-agent doctor again.")
+        return 1 if args.fail_on_error else 0
+    print("Environment looks ready.")
+    return 0
+
+
+def cmd_install_browsers(args: argparse.Namespace) -> int:
+    rc = run_playwright_install(args.browser)
+    if rc == 0:
+        print(f"Installed Playwright browser: {args.browser}")
+        print("Next: site-agent doctor")
+    return rc
+
+
 def build_parser(include_completion: bool = True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="site-agent", description="Evidence-backed website interaction mapper.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1242,6 +1266,17 @@ def build_parser(include_completion: bool = True) -> argparse.ArgumentParser:
     package_build.add_argument("--public-only", action="store_true", help="Exclude private adapter/profile artifacts from the package.")
     package_build.add_argument("--no-zip", action="store_true", help="Write only the package directory, not a zip bundle.")
     package_build.set_defaults(func=cmd_package_build)
+
+    doctor = sub.add_parser("doctor", help="Check local dependencies and browser readiness.")
+    doctor.add_argument("--no-playwright", action="store_true", help="Skip Playwright package/browser checks.")
+    doctor.add_argument("--fail-on-error", action="store_true")
+    doctor.set_defaults(func=cmd_doctor)
+
+    install = sub.add_parser("install", help="Install optional runtime assets.")
+    install_sub = install.add_subparsers(dest="install_command", required=True)
+    install_browsers = install_sub.add_parser("browsers", help="Install Playwright browser binaries.")
+    install_browsers.add_argument("--browser", default="chromium", choices=["chromium", "firefox", "webkit"])
+    install_browsers.set_defaults(func=cmd_install_browsers)
 
     if include_completion:
         completion = sub.add_parser("completion", help="Generate shell completion scripts.")
