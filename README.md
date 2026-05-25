@@ -1,6 +1,6 @@
 # site-agent
 
-`site-agent` is a generic, domain-aware website interaction mapper. It creates target profiles, crawls browser applications, extracts forms and actions, aligns UI evidence to domain terms, and generates stable MCP tool contracts.
+`site-agent` is a generic, domain-aware website interaction mapper. It creates target profiles, crawls browser applications, extracts forms and actions, aligns UI evidence to domain terms, and generates stable automation surfaces: a Python API, an MCP server, and an Ansible collection.
 
 The project core is product-agnostic. Target-specific behavior belongs in profiles and adapters.
 
@@ -11,8 +11,10 @@ site-agent profile init --name my-site --base-url https://example.com
 site-agent auth setup --profile my-site
 site-agent crawl run --profile my-site
 site-agent schema review --profile my-site
+site-agent api build --profile my-site
 site-agent mcp build --profile my-site
 site-agent mcp serve --profile my-site
+site-agent ansible build --profile my-site
 site-agent config save --profile my-site --repo ../my-site-settings --commit --tag v1
 site-agent config coverage --profile my-site --settings-repo ../my-site-settings
 site-agent drift check --profile my-site
@@ -72,7 +74,9 @@ site-agent auth setup --profile zte-router \
 site-agent docs discover --profile zte-router --product-hint "ZTE router web UI user guide"
 site-agent crawl run --profile zte-router --research-product-hint "ZTE router web UI user guide"
 site-agent schema review --profile zte-router
+site-agent api build --profile zte-router
 site-agent mcp build --profile zte-router
+site-agent ansible build --profile zte-router
 site-agent config save --profile zte-router --repo ../zte-router-settings --commit --tag v1
 site-agent config coverage --profile zte-router --settings-repo ../zte-router-settings
 site-agent package build --profile zte-router
@@ -132,6 +136,96 @@ site-agent mcp diff --profile my-site --baseline output/my-site/mcp/contract.jso
 site-agent mcp refresh-adapter --profile my-site
 ```
 
+## Generated Automation Surfaces
+
+The approved model is the source of truth. After crawl, documentation ingestion, AI-assisted semantic alignment, and human review, `site-agent` should be able to generate three complementary automation outputs.
+
+### Python API
+
+The generated Python API is intended to be the shared execution layer:
+
+```bash
+site-agent api build --profile my-site
+```
+
+Expected output:
+
+```text
+output/my-site/api/
+  pyproject.toml
+  my_site_client/
+    __init__.py
+    client.py
+    models.py
+    runtime.py
+    evidence.json
+```
+
+The public Python API should expose typed, selector-free methods such as:
+
+```python
+from my_site_client import MySiteClient
+
+client = MySiteClient.from_profile("profiles/my-site")
+status = client.get_wan_status()
+plan = client.set_alert_email("ops@example.test", dry_run=True)
+```
+
+Selectors, Playwright locators, and profile-specific adapter details stay private inside the generated runtime/adapter files. Methods include docstrings, constraints, risk metadata, and evidence IDs.
+
+### MCP Server
+
+MCP remains the agent-facing surface:
+
+```bash
+site-agent mcp build --profile my-site
+site-agent mcp serve --profile my-site
+```
+
+Where practical, generated MCP tools should call the generated Python API rather than duplicating browser/action logic. This keeps agent tooling stable while the Python API owns execution, dry-run, confirmation, and adapter behavior.
+
+### Ansible Collection
+
+The generated Ansible collection is the operator-facing surface:
+
+```bash
+site-agent ansible build --profile my-site
+```
+
+Expected output:
+
+```text
+output/my-site/ansible/ansible_collections/site_agent/my_site/
+  galaxy.yml
+  plugins/
+    module_utils/client.py
+    modules/
+      my_site_facts.py
+      my_site_alert_email.py
+  playbooks/
+    backup.yml
+    restore_plan.yml
+```
+
+Ansible modules should be thin wrappers around the generated Python API. Modules may claim idempotence only when the model has both current-value read evidence and an approved write/restore path. Write-capable modules must support check mode by using the Python API dry-run path.
+
+Example playbook shape:
+
+```yaml
+- hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Read web UI facts
+      site_agent.my_site.my_site_facts:
+        profile_path: profiles/my-site
+
+    - name: Set alert email
+      site_agent.my_site.my_site_alert_email:
+        profile_path: profiles/my-site
+        value: ops@example.test
+      check_mode: true
+```
+
 ## Configuration Versioning
 
 `site-agent` is designed to snapshot web UI settings into a small dedicated git repository, then diff or restore those settings later through approved UI tools.
@@ -171,3 +265,5 @@ site-agent package build --profile my-site
 ```
 
 The package includes public schema/tool metadata, interaction graph, ontology, reports, and RAG chunks. Private adapter bindings and profile data are separated under `private/` when included.
+
+As Python API and Ansible generation land, packages should include those generated artifacts or manifests pointing to them, so agents and operators can choose the right surface for the task.

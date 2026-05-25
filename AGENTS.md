@@ -6,6 +6,8 @@ Build a generic, domain-aware website interaction mapper that:
 - Maps pages, forms, fields, actions, and navigation paths.
 - Uses AI plus retrieved domain documentation to produce coherent, jargon-correct schema.
 - Generates stable MCP server interfaces from canonical concepts, not fragile UI selectors.
+- Generates a typed Python API package from the approved model so developers can automate the target web UI directly.
+- Generates an Ansible collection from the approved model so operators can manage the target web UI declaratively.
 - Captures current web UI configuration state into versionable artifacts so users can diff, audit, and restore settings through approved UI actions.
 
 This project must remain product-agnostic.
@@ -13,6 +15,7 @@ This project must remain product-agnostic.
 ## Non-Goals
 - Do not hardcode target-specific product logic in core.
 - Do not ship target-specific MCP tools as part of core.
+- Do not ship target-specific Python API clients or Ansible modules as part of core.
 - Do not expose raw selectors as public API.
 - Do not rely on LLM guesses without evidence.
 
@@ -24,7 +27,9 @@ Target systems are external profiles.
   - Document ingestion and retrieval.
   - Authenticated crawler and interaction extraction.
   - Semantic alignment and ontology mapping.
+  - Generated Python API synthesis.
   - MCP tool synthesis.
+  - Ansible collection synthesis.
   - Configuration state snapshot, diff, and restore planning.
   - Drift detection and validation.
 - Profiles (external fixtures/config packs):
@@ -43,8 +48,8 @@ Primary user flow:
 2. Configure authentication and crawl scope.
 3. Run crawl + extraction.
 4. Review AI mappings and approve low-confidence items.
-5. Generate MCP server from approved schema.
-6. Connect MCP server to an agent client and run tasks.
+5. Generate automation surfaces from approved schema: Python API, MCP server, and optionally an Ansible collection.
+6. Connect MCP server to an agent client, import the Python API, or run Ansible modules/tasks.
 7. Optionally snapshot current settings into a dedicated git repository.
 8. Re-run sync when website UI changes.
 
@@ -53,8 +58,10 @@ Recommended CLI shape (or equivalent UI actions):
 - `site-agent auth setup`
 - `site-agent crawl run`
 - `site-agent schema review`
+- `site-agent api build`
 - `site-agent mcp build`
 - `site-agent mcp serve`
+- `site-agent ansible build`
 - `site-agent config save`
 - `site-agent config coverage`
 - `site-agent config diff`
@@ -69,11 +76,13 @@ UX requirements:
 - Errors must include actionable fixes, not just stack traces.
 - Low-confidence mappings are shown in a review queue.
 - Generated MCP tools include human-readable descriptions and evidence references.
+- Generated Python API methods include typed arguments, docstrings, constraints, risk metadata, and evidence references.
+- Generated Ansible modules expose idempotent check-mode friendly operations where the model has enough read/write evidence.
 - Configuration snapshots produce deterministic, reviewable files suitable for a small dedicated git repository.
 - Restores default to plan/dry-run and require explicit confirmation before applying any setting changes.
 
 ## Quick Start (5 Minutes)
-Use this flow to go from zero to a working MCP server quickly.
+Use this flow to go from zero to generated automation surfaces quickly.
 
 1. Initialize a target profile.
 ```bash
@@ -107,16 +116,26 @@ Expected outcome:
 - Shows high-confidence mappings as ready.
 - Queues low-confidence mappings for approval.
 
-5. Build and serve MCP.
+5. Build the Python API, then build and serve MCP.
 ```bash
+site-agent api build --profile my-site
 site-agent mcp build --profile my-site
 site-agent mcp serve --profile my-site
 ```
 Expected outcome:
-- Generates MCP tools from approved schema.
+- Generates a typed Python API package from approved schema and profile adapters.
+- Generates MCP tools from approved schema, preferably backed by the generated Python API execution layer.
 - Starts MCP server for agent client connection.
 
-6. Check drift after UI updates.
+6. Optionally build an Ansible collection.
+```bash
+site-agent ansible build --profile my-site
+```
+Expected outcome:
+- Generates Ansible modules, module_utils, documentation fragments, and task examples for model-backed read/update operations.
+- Modules support check mode for write-capable operations when the generated Python API supports dry-run.
+
+7. Check drift after UI updates.
 ```bash
 site-agent drift check --profile my-site
 ```
@@ -124,7 +143,7 @@ Expected outcome:
 - Reports changes and proposed remaps.
 - Preserves stable tool contracts when semantics are unchanged.
 
-7. Snapshot settings into a dedicated git repository.
+8. Snapshot settings into a dedicated git repository.
 ```bash
 site-agent config save --profile my-site --repo ../my-site-settings --commit --tag v1
 ```
@@ -133,7 +152,7 @@ Expected outcome:
 - Writes deterministic JSON/YAML artifacts into the settings repo.
 - Commits the snapshot with run metadata and evidence references.
 
-8. Compare or restore settings from a branch, tag, or commit.
+9. Compare or restore settings from a branch, tag, or commit.
 ```bash
 site-agent config diff --profile my-site --repo ../my-site-settings --ref v2026-05-25-good
 site-agent config restore-plan --profile my-site --repo ../my-site-settings --ref v2026-05-25-good
@@ -203,10 +222,24 @@ Implement in this layered order.
 - Never invent mappings when confidence is low.
 - Output: coherent, domain-grounded schema.
 
-4. MCP Synthesis Layer
+4. Generated Python API Layer
+- Generate a target-specific Python package from canonical concepts, approved schema, and profile adapter bindings.
+- Treat the generated Python API as the shared execution layer for higher-level automation surfaces when practical.
+- Expose stable, typed methods for:
+  - read/status operations
+  - low/medium-risk configuration updates
+  - staged create/update/delete flows
+  - configuration snapshot/diff/restore-plan helpers
+- Include generated dataclasses or Pydantic-style models for arguments and returns when dependencies allow; otherwise use typed standard-library dataclasses.
+- Preserve dry-run support for all write operations.
+- Keep selectors and browser details private inside adapter/runtime modules, not public method signatures.
+- Output: generated Python client package plus adapter/runtime metadata.
+
+5. MCP Synthesis Layer
 - Generate MCP tools from canonical intents.
 - Keep external API stable and readable.
-- Internally map to selector adapters per profile and version.
+- Prefer calling the generated Python API rather than duplicating browser/action execution logic.
+- Internally map to selector adapters per profile and version through the Python API/runtime layer.
 - Emit metadata for each tool:
   - description in domain language
   - arguments and types
@@ -214,13 +247,26 @@ Implement in this layered order.
   - evidence summary
   - risk level
 
-5. Validation and Drift Layer
+6. Ansible Collection Synthesis Layer
+- Generate an Ansible collection from approved schema and generated Python API capabilities.
+- Prefer implementing Ansible modules as thin wrappers around the generated Python API.
+- Generate:
+  - modules for read/status facts where read evidence exists
+  - modules for configuration updates where restore/write tools and current-value reads exist
+  - module_utils client wrapper for shared auth/session/runtime behavior
+  - examples/playbooks and argument documentation
+- Support Ansible check mode using Python API dry-run behavior.
+- Expose idempotent semantics only when current-value reads and write/restore paths are both evidenced.
+- Mark non-idempotent or low-confidence actions as documentation-only or review-required, not normal modules.
+- Output: generated Ansible collection package.
+
+7. Validation and Drift Layer
 - Re-run crawl after UI change or schedule.
 - Detect label/selector/layout drift.
 - Attempt semantic remapping using ontology and evidence.
 - Mark uncertain remaps for review.
 
-6. Configuration State Versioning Layer
+8. Configuration State Versioning Layer
 - Read all approved setting/status values that are in scope for configuration backup.
 - Normalize values into deterministic artifacts keyed by canonical concept and stable collection path, not raw selectors.
 - Store snapshots in a user-provided git repository dedicated to the target's settings.
@@ -234,6 +280,8 @@ Implement in this layered order.
 - Extraction quality target: >= 0.95 precision on form/input extraction for benchmark profiles.
 - Mapping quality target: >= 0.90 precision on stable (>= 0.85 confidence) concept mappings.
 - Contract stability target: no breaking MCP tool signature changes without version bump.
+- Python API stability target: no breaking method signature changes without version bump.
+- Ansible collection stability target: no breaking module argument changes without version bump.
 - Drift remap target: >= 0.85 automatic remap success on non-semantic UI changes.
 - Configuration snapshot determinism target: identical UI state produces byte-stable snapshot artifacts .
 - Restore planning target: 100 percent of changed settings either map to an approved write/staged-action tool or are reported as non-restorable with evidence.
@@ -246,6 +294,7 @@ Use AI for these tasks only:
 - Constraint extraction and conflict detection.
 - Crawl planning prioritization by expected missing concepts.
 - Configuration grouping and restore-plan explanation when backed by UI/tool evidence.
+- Python API and Ansible naming/description generation when backed by approved schema evidence.
 
 Do not use AI as single source of truth.
 All public schema and MCP decisions require evidence artifacts.
@@ -297,11 +346,11 @@ Configuration versioning safety:
 - Require review only for low-confidence mappings and high-risk write tools.
 
 ## Versioning Policy
-- Use semantic versioning for generated MCP contracts.
+- Use semantic versioning for generated Python API, MCP contracts, and Ansible collections.
 - Patch: non-breaking metadata or internal adapter fixes.
 - Minor: additive tool/argument changes that are backward compatible.
 - Major: breaking renames, argument removals, or semantic behavior changes.
-- Version adapters independently from canonical MCP contract when only UI bindings drift.
+- Version adapters independently from canonical API/MCP/Ansible contracts when only UI bindings drift.
 
 ## Observability and Debugging
 - Every run must emit a unique run_id.
@@ -317,7 +366,9 @@ Core must expose stable extension points for:
 - Document ingestion/retrieval providers.
 - Ontology provider plugins.
 - Semantic alignment backends.
+- Python API synthesis backends.
 - MCP synthesis backends.
+- Ansible collection synthesis backends.
 
 Plugin requirements:
 - Well-defined interface contracts.
@@ -348,6 +399,14 @@ At minimum persist:
   - id, target_ref, current_snapshot_id, steps, risk_summary, rollback_snapshot_id, requires_review
 - RestoreStep
   - setting_id, tool_name, args, previous_value, desired_value, risk_level, evidence_ids, status
+- PythonApiSpec
+  - package_name, version, methods, models, evidence_ids, adapter_version
+- PythonApiMethod
+  - name, description, args, return_schema, risk_level, dry_run_supported, evidence_ids, backing_tool_or_concept
+- AnsibleCollectionSpec
+  - namespace, name, version, modules, module_utils, evidence_ids, python_api_dependency
+- AnsibleModuleSpec
+  - name, description, options, supports_check_mode, idempotence_level, risk_level, evidence_ids, backing_python_method
 
 ## Implementation Phases
 Phase 1: Foundations
@@ -366,8 +425,10 @@ Phase 3: Semantic Layer
 - Confidence scoring and gating.
 - Human-review hooks.
 
-Phase 4: MCP Generation
-- Tool synthesis from canonical concepts.
+Phase 4: Automation Surface Generation
+- Python API synthesis from canonical concepts.
+- MCP tool synthesis, preferably backed by the generated Python API.
+- Ansible collection synthesis for evidenced read/update operations.
 - Profile adapters.
 - Structured metadata and docs output.
 
@@ -390,6 +451,8 @@ A build is acceptable only if:
 - >= 90 percent of exposed tools have dual evidence (UI + docs) or approved exception.
 - All high-risk tools require confirmation metadata.
 - Generated tool names are canonical and domain coherent.
+- Generated Python API methods are canonical, typed, documented, and selector-free.
+- Generated Ansible modules use Ansible-style names/options, support check mode where possible, and do not claim idempotence without read/write evidence.
 - Drift tests pass for at least one synthetic target profile.
 - Configuration snapshots are deterministic and restorable only through approved tools.
 
@@ -405,6 +468,13 @@ A build is acceptable only if:
   - git repo init/commit/diff against fixture snapshots.
   - restore plan generation from a tag/branch/commit.
   - restore apply against controlled mock app only.
+- Generated API tests:
+  - Python API package imports and calls dry-run/read operations against fixtures.
+  - API method signatures remain stable across adapter-only drift.
+- Generated Ansible tests:
+  - collection skeleton validates with `ansible-test sanity` when available.
+  - modules support check mode for write-capable fixture operations.
+  - generated modules call the Python API layer rather than duplicating selector logic.
 - Benchmark pack tests:
   - run standard benchmark profiles and compare coverage, extraction precision, mapping quality, and contract stability.
 - Manual acceptance:
@@ -427,7 +497,9 @@ Ship these outputs:
 - Canonical ontology JSON.
 - Interaction graph JSON.
 - Mapped schema JSON with evidence and confidence.
+- Generated Python API package.
 - Generated MCP server package.
+- Generated Ansible collection package.
 - Profile adapter package.
 - Validation report with drift and risk summary.
 - Versioned configuration snapshot package.
@@ -443,6 +515,8 @@ Use this structure once code is added:
   - synthesize/
   - drift/
   - config/
+  - api/
+  - ansible/
 - contracts/
   - schemas/
 - profiles/
@@ -452,6 +526,8 @@ Use this structure once code is added:
   - ontology/
   - schema/
   - mcp/
+  - api/
+  - ansible/
   - reports/
   - config/
 - tests/
@@ -465,7 +541,7 @@ For any new target profile:
 2. Configure auth and crawl policy.
 3. Run crawl and extract forms/inputs/actions.
 4. Run semantic alignment with evidence capture.
-5. Generate MCP tools and adapters.
+5. Generate Python API, MCP tools, Ansible collection, and adapters.
 6. Optionally run configuration snapshot into a dedicated settings repository.
 7. Run quality gates and risk checks.
 8. Publish artifacts and report confidence.
@@ -475,7 +551,9 @@ Phase 1 MVP includes only:
 - authenticated crawl with embedded Chromium JavaScript execution
 - form/input extraction with context capture
 - evidence-backed semantic mapping
+- Python API generation for read-only and low-risk write operations
 - MCP generation for read-only and low-risk write operations
+- Ansible collection generation for evidenced read-only and low-risk idempotent operations
 - dry-run support for all write operations
 - read-only configuration snapshots and restore-plan dry-runs for approved low/medium-risk settings
 
@@ -497,5 +575,7 @@ When UI changes:
 Done means:
 - Core remains generic.
 - Schema is domain-coherent and evidence-backed.
+- Generated Python API is stable, typed, selector-free, and used as the preferred shared execution layer.
 - MCP interface is stable, readable, and safe.
+- Generated Ansible collection is evidence-backed, check-mode aware, and uses the generated Python API where practical.
 - Target-specific behavior exists only in profiles/adapters.
