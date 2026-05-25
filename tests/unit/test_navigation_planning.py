@@ -1,5 +1,5 @@
 from site_agent.core.ai.backends import FakeAiBackend
-from site_agent.core.crawl.playwright import append_state_path_url, is_safe_navigation_label, path_revisit_allowed, rank_navigation_labels, safe_click_patterns
+from site_agent.core.crawl.playwright import append_state_path_url, best_navigation_label, is_safe_navigation_label, path_revisit_allowed, rank_navigation_labels, safe_click_patterns
 from site_agent.core.models import DomainTerm
 from site_agent.core.profiles import CrawlPolicy, Profile
 import pytest
@@ -56,6 +56,13 @@ def test_navigation_paths_are_replayable_and_do_not_repeat_seed_sections():
     assert not path_revisit_allowed(("Status", "WAN"), "Status", profile)
 
 
+def test_best_navigation_label_maps_compound_ai_target_to_visible_tab():
+    labels = ["Firewall", "Filter Criteria", "DMZ", "Port Forwarding"]
+
+    assert best_navigation_label("Port Forwarding / Virtual Server", labels) == "Port Forwarding"
+    assert best_navigation_label("IP Filter / Port Filter", labels) == "Filter Criteria"
+
+
 def test_form_flow_probe_detects_visible_dynamic_new_item():
     from playwright.sync_api import sync_playwright
 
@@ -107,3 +114,42 @@ def test_form_flow_probe_detects_visible_dynamic_new_item():
     selector_ids = {element.context.get("selector_id") for element in snapshot.elements}
     assert {"ruleName:1", "port:1"} <= selector_ids
     assert any("maxLength" in constraints or "maxlength" in constraints for constraints in flow.constraints.values())
+
+
+def test_browser_form_capture_reconciles_visible_controls_without_parser_fields():
+    from playwright.sync_api import sync_playwright
+
+    from site_agent.core.crawl.playwright import capture_browser_forms
+    from site_agent.core.models import CrawlSnapshot, Page, utc_now
+
+    html = """
+    <html><body>
+      <form>
+        <table>
+          <tr><td>Name</td><td><input id="alias" name="Alias" value="ssh"></td></tr>
+          <tr><td>Protocol</td><td><select id="proto" name="Protocol"><option>TCP</option></select></td></tr>
+          <tr><td>WAN Port</td><td><input id="wan" name="ExternalPort" value="12121"></td></tr>
+          <tr><td>LAN Host</td><td><input id="lan" name="InternalClient" value="192.168.1.123"></td></tr>
+          <tr><td></td><td><input type="button" value="Apply"></td></tr>
+        </table>
+      </form>
+    </body></html>
+    """
+    profile = make_profile()
+    snapshot = CrawlSnapshot(timestamp=utc_now(), profile_id=profile.id, run_id="run")
+    page_model = Page(id="page_1", url=profile.base_url, title="Port Forwarding", headings=["Port Forwarding"])
+    snapshot.pages.append(page_model)
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch(headless=True)
+        except Exception as exc:
+            pytest.skip(f"Chromium is unavailable in this sandbox: {exc}")
+        page = browser.new_page()
+        page.set_content(html)
+        capture_browser_forms(snapshot, page, page_model.id, profile.base_url)
+        browser.close()
+
+    assert len(snapshot.forms) == 1
+    fields = [element for element in snapshot.elements if element.id in snapshot.forms[0].field_ids]
+    assert {"Name", "Protocol", "WAN Port", "LAN Host"} <= {field.label for field in fields}
+    assert all(field.context.get("browser_reconciled_form") for field in fields)

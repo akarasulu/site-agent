@@ -4,7 +4,11 @@ from pathlib import Path
 import pytest
 
 from site_agent.cli import main
-from site_agent.core.ai.backends import get_ai_backend
+from site_agent.cli import directional_target_outcomes
+from site_agent.core.ai.backends import FakeAiBackend, OpenAiResponsesBackend, get_ai_backend
+from site_agent.core.ai.research import discover_ui_domain
+from site_agent.core.models import CrawlSnapshot, Page, utc_now
+from site_agent.core.profiles import load_profile
 from site_agent.core.storage import read_json, write_json
 
 
@@ -120,3 +124,121 @@ def test_fake_ai_docs_discovery_writes_evidence(tmp_path, monkeypatch):
     text = docs[0].read_text(encoding="utf-8")
     assert "# wan status" in text
     assert "https://example.com/manual" in text
+    session = read_json(Path("output/router/reports/research-session.json"))
+    assert session["domain_hypotheses"] == ["Example Router"]
+    assert session["terms"]
+
+
+def test_fake_ai_ui_domain_discovery_writes_router_capability_ontology(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert main(["profile", "init", "--name", "router", "--base-url", "https://192.0.2.1"]) == 0
+    profile = load_profile(Path.cwd(), "router")
+
+    markdown_path, json_path = discover_ui_domain(
+        Path.cwd(),
+        profile,
+        FakeAiBackend(),
+        "ZTE Router WAN Status LAN Wi-Fi Security",
+        max_sources=2,
+    )
+
+    text = markdown_path.read_text(encoding="utf-8")
+    raw = read_json(json_path)
+    session = read_json(Path("output/router/reports/research-session.json"))
+    assert "# port forwarding rule" in text
+    assert any(term["canonical_name"] == "port forwarding rule" for term in raw["terms"])
+    assert "Example Router Admin UI" in session["domain_hypotheses"]
+
+
+def test_live_crawl_requires_active_ai_backend(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SITE_AGENT_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("SITE_AGENT_ALLOW_NO_AI", raising=False)
+
+    assert main(["profile", "init", "--name", "demo", "--base-url", "https://example.com"]) == 0
+    assert main(["crawl", "run", "--profile", "demo"]) == 2
+    captured = capsys.readouterr()
+    assert "Live crawl requires an active AI backend" in captured.err
+
+
+def test_live_crawl_with_active_ai_runs_ui_domain_discovery(tmp_path, monkeypatch, capsys):
+    import site_agent.cli as cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SITE_AGENT_AI_PROVIDER", "fake")
+    monkeypatch.setattr(cli, "sample_landing_page_text", lambda *args, **kwargs: "Router WAN Status Security")
+    monkeypatch.setattr(
+        cli,
+        "crawl_profile",
+        lambda workspace, profile, *args, **kwargs: CrawlSnapshot(timestamp=utc_now(), profile_id=profile.id, run_id="run_live_ai"),
+    )
+
+    assert main(["profile", "init", "--name", "router", "--base-url", "https://192.0.2.1"]) == 0
+    assert main(["crawl", "run", "--profile", "router"]) == 0
+    captured = capsys.readouterr()
+    assert "Pre-crawl AI UI domain evidence saved" in captured.out
+    docs = list(Path("profiles/router/docs").glob("ai-research-*.md"))
+    assert any("# port forwarding rule" in path.read_text(encoding="utf-8") for path in docs)
+
+
+def test_planned_live_crawl_reuses_existing_research_session(tmp_path, monkeypatch, capsys):
+    import site_agent.cli as cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SITE_AGENT_AI_PROVIDER", "fake")
+    assert main(["profile", "init", "--name", "router", "--base-url", "https://192.0.2.1"]) == 0
+    write_json(
+        Path("output/router/reports/research-session.json"),
+        {
+            "profile_id": "profile",
+            "profile_name": "router",
+            "terms": [{"canonical_name": "port forwarding"}],
+            "sources": [],
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "latest_crawl_plan",
+        lambda workspace, profile_name: {"plan_id": "plan", "prioritized_labels": [{"label": "Virtual Server", "sources": ["ai_directional"]}]},
+    )
+    monkeypatch.setattr(cli, "sample_landing_page_text", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should reuse research")))
+    monkeypatch.setattr(cli, "build_ontology_artifact", lambda *args, **kwargs: ([], []))
+    monkeypatch.setattr(
+        cli,
+        "crawl_profile",
+        lambda workspace, profile, *args, **kwargs: CrawlSnapshot(timestamp=utc_now(), profile_id=profile.id, run_id="run_planned"),
+    )
+
+    assert main(["crawl", "run", "--profile", "router", "--use-plan", "latest"]) == 0
+    captured = capsys.readouterr()
+    assert "reusing existing research session" in captured.out
+
+
+def test_directional_target_outcomes_report_reached_partial_and_failed():
+    snapshot = CrawlSnapshot(
+        timestamp=utc_now(),
+        profile_id="profile",
+        run_id="run",
+        pages=[
+            Page(id="p1", url="https://example.test/#state=internet/port-binding"),
+            Page(id="p2", url="https://example.test/#state=local-network"),
+        ],
+    )
+    plan = {
+        "directional_targets": [
+            {"branch_path": ["Internet", "Port Binding"], "labels": ["Virtual Server"]},
+            {"branch_path": ["Local Network", "UPnP"], "labels": ["UPnP"]},
+            {"branch_path": ["Management", "Logs"], "labels": ["Logs"]},
+        ]
+    }
+
+    outcomes = directional_target_outcomes(plan, snapshot)
+
+    assert [item["status"] for item in outcomes] == ["reached", "partial", "failed"]
+
+
+def test_openai_backend_is_default_when_key_exists(monkeypatch):
+    monkeypatch.delenv("SITE_AGENT_AI_PROVIDER", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    assert isinstance(get_ai_backend(), OpenAiResponsesBackend)

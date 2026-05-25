@@ -167,7 +167,7 @@ Use private storage, filesystem permissions, `git-crypt`, `sops`, or equivalent 
 
 ## AI Backends
 
-AI is optional. The default path is deterministic and evidence-gated.
+AI is required for autonomous live learning unless `SITE_AGENT_ALLOW_NO_AI=1` is set for an explicit offline/debug crawl. Fixture crawls and deterministic tests can still run without AI. The default path remains evidence-gated: AI may propose domain concepts, navigation targets, mappings, and descriptions, but public mappings still require evidence IDs and confidence gating.
 
 ```bash
 SITE_AGENT_AI_PROVIDER=fake site-agent schema review --profile demo
@@ -185,7 +185,17 @@ OpenAI settings:
 - `OPENAI_API_KEY`
 - `SITE_AGENT_AI_MODEL`, default `gpt-5-mini`
 
-AI outputs are never accepted as the sole source of truth. Public mappings still require evidence IDs and confidence gating.
+Live crawl learning uses a persistent research session at `output/<profile>/reports/research-session.json`. The intended loop is:
+
+- Infer the site/product domain from entry-page or dashboard text.
+- Research domain terminology from official docs first, then standards or Wikipedia-style catalogs, vendor/ISP support pages, and lower-confidence forum usage hints.
+- Extract a domain dictionary and ontology before the first navigation pass.
+- Crawl once using that ontology as nomenclature.
+- Analyze weak or vague model areas, such as ontology terms with no mapped UI evidence or forms whose purpose is unclear.
+- Produce directional crawl targets that name specific UI branches and labels to probe next, rather than doing a full broad recrawl.
+- Feed those targets into `site-agent crawl plan` and then `site-agent crawl run --use-plan latest`.
+
+For a residential router, the research session should converge on home-gateway/networking concepts such as WAN, LAN, Wi-Fi, DHCP, DNS, NAT, port forwarding, virtual server, firewall, DMZ, UPnP, DDNS, diagnostics, logs, firmware, and account management. Later passes should focus attention where the model is weakest, for example `Internet > Security` with labels like NAT, Virtual Server, Port Forwarding, Port Binding, and UPnP when port-forwarding concepts are missing.
 
 Run a bounded live OpenAI smoke test:
 

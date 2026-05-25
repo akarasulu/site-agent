@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlparse
 from site_agent.core.ai.backends import AiBackend, NoopAiBackend
 from site_agent.core.extract.html import extract_interactions
 from site_agent.core.ingest.docs import normalize_term
-from site_agent.core.models import CrawlSnapshot, DomainTerm, Evidence, InteractionFlow, Transition, UiElement, new_id, utc_now
+from site_agent.core.models import CrawlSnapshot, DomainTerm, Evidence, Form, InteractionFlow, Transition, UiElement, new_id, utc_now
 from site_agent.core.profiles import Profile, profile_root
 
 
@@ -47,10 +47,17 @@ DEFAULT_CLICK_DENY_PATTERNS = [
 ]
 
 
-CLICKABLE_SELECTOR = "a, [role=tab], [role=menuitem], [role=treeitem], [onclick]"
-FORM_FLOW_TRIGGER_SELECTOR = "button, input[type=button], input[type=submit], a, [role=button], [onclick]"
+CLICKABLE_SELECTOR = (
+    "a, [role=tab], [role=menuitem], [role=treeitem], [onclick], "
+    ".AEleMenu3, .AEleMenu3Selected"
+)
+FORM_FLOW_TRIGGER_SELECTOR = (
+    "button, input[type=button], input[type=submit], a, [role=button], [onclick], "
+    ".AEleMenu3, .AEleMenu3Selected, .collapBarWithDataTrans"
+)
 FORM_FLOW_TRIGGER_RE = re.compile(r"\b(add|create|new|new item|add item|create new)\b", re.IGNORECASE)
 FORM_FLOW_CANCEL_RE = re.compile(r"\b(cancel|close|discard)\b", re.IGNORECASE)
+OVERLAY_DISMISS_RE = re.compile(r"\b(cancel|close|no)\b", re.IGNORECASE)
 
 
 def validate_url_allowed(profile: Profile, url: str) -> None:
@@ -259,6 +266,34 @@ def add_fact(snapshot: CrawlSnapshot, page_id: str, url: str, label: str, value:
     )
 
 
+def add_ui_cue(snapshot: CrawlSnapshot, page_id: str, url: str, label: str, cue_type: str, context: dict) -> None:
+    clean_label = " ".join(label.split()).strip(" :-")
+    if len(clean_label) < 3 or len(clean_label) > 120:
+        return
+    fingerprint = hashlib.sha256(f"cue|{url}|{cue_type}|{clean_label}".encode("utf-8")).hexdigest()[:16]
+    if any(element.selector_fingerprint == fingerprint for element in snapshot.elements):
+        return
+    evidence = Evidence(
+        id=new_id("ev"),
+        kind="ui",
+        source=url,
+        summary=f"{cue_type} cue labelled '{clean_label}'",
+        locator=fingerprint,
+    )
+    snapshot.evidence.append(evidence)
+    snapshot.elements.append(
+        UiElement(
+            id=new_id("ui"),
+            page_id=page_id,
+            selector_fingerprint=fingerprint,
+            label=clean_label,
+            control_type=cue_type,
+            context=context,
+            evidence_ids=[evidence.id],
+        )
+    )
+
+
 def extract_browser_facts(snapshot: CrawlSnapshot, page, page_id: str, url: str) -> None:
     try:
         headings = page.locator("h1,h2,h3,.pageTitle,.title,[id*=Title],[class*=title]").evaluate_all(
@@ -267,10 +302,16 @@ def extract_browser_facts(snapshot: CrawlSnapshot, page, page_id: str, url: str)
     except Exception:
         headings = []
     context = {"page_title": page.title(), "headings": headings}
+    for heading in headings:
+        add_ui_cue(snapshot, page_id, url, heading, "heading", context)
     try:
         text = page.locator("body").inner_text(timeout=5000)
     except Exception:
         text = ""
+    for line in text.splitlines():
+        clean = " ".join(line.split()).strip()
+        if clean in headings or clean.lower() in {"page information", "port forwarding", "firewall", "filter criteria", "dmz"}:
+            add_ui_cue(snapshot, page_id, url, clean, "section_heading", context)
     for line in text.splitlines():
         if ":" not in line:
             continue
@@ -331,7 +372,36 @@ def discover_navigation_labels(page, profile: Profile) -> list[str]:
     return clean_labels
 
 
+def best_navigation_label(label: str, visible_labels: list[str]) -> str:
+    label_key = normalize_term(label)
+    label_tokens = {part for part in label_key.split() if len(part) > 2}
+    best_label = label
+    best_score = 0.0
+    for visible_label in visible_labels:
+        visible_key = normalize_term(visible_label)
+        if visible_key == label_key:
+            return visible_label
+        visible_tokens = {part for part in visible_key.split() if len(part) > 2}
+        if not visible_tokens or not label_tokens:
+            continue
+        shared = label_tokens & visible_tokens
+        score = len(shared) / len(visible_tokens)
+        if visible_key in label_key or label_key in visible_key:
+            score += 0.5
+        if shared and any(token in {"forwarding", "forward", "firewall", "filter", "criteria", "dmz", "upnp", "security"} for token in shared):
+            score += 0.2
+        if score > best_score:
+            best_label = visible_label
+            best_score = score
+    return best_label if best_score >= 0.65 else label
+
+
+def resolve_visible_navigation_label(page, label: str, profile: Profile) -> str:
+    return best_navigation_label(label, discover_navigation_labels(page, profile))
+
+
 def click_navigation_label(page, label: str) -> bool:
+    dismiss_blocking_overlays(page)
     exact_text = re.compile(rf"^\s*{re.escape(label)}\s*$")
     try:
         locator = page.locator(CLICKABLE_SELECTOR).filter(has_text=exact_text, visible=True).first
@@ -344,6 +414,37 @@ def click_navigation_label(page, label: str) -> bool:
             return True
         except Exception:
             return False
+
+
+def dismiss_blocking_overlays(page) -> bool:
+    try:
+        blocked = page.locator("#blackMask, .black_overlay, [role=dialog]").evaluate_all(
+            """
+            els => els.some(el => {
+              const style = window.getComputedStyle(el);
+              const rect = el.getBoundingClientRect();
+              return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+            })
+            """
+        )
+    except Exception:
+        blocked = False
+    if not blocked:
+        return False
+    for pattern in [OVERLAY_DISMISS_RE, re.compile(r"\bok\b", re.IGNORECASE)]:
+        try:
+            locator = page.locator("button, input[type=button], input[type=submit], a, [role=button]").filter(has_text=pattern, visible=True).last
+            locator.click(timeout=1000, force=True)
+            page.wait_for_timeout(500)
+            return True
+        except Exception:
+            try:
+                page.locator("button, input[type=button], input[type=submit], a, [role=button]").filter(has_text=pattern).last.evaluate("el => el.click()")
+                page.wait_for_timeout(500)
+                return True
+            except Exception:
+                continue
+    return False
 
 
 def visible_control_snapshot(page) -> list[dict]:
@@ -451,6 +552,137 @@ def selector_fingerprint_for_control(control: dict, url: str) -> str:
     return hashlib.sha256(stable.encode("utf-8")).hexdigest()[:16]
 
 
+def browser_form_fingerprint(form: dict, control: dict, url: str) -> str:
+    stable = "|".join(
+        [
+            "browser-form",
+            url,
+            str(form.get("index", "")),
+            str(control.get("index", "")),
+            control.get("id") or "",
+            control.get("name") or "",
+            control.get("type") or "",
+            control.get("label") or "",
+        ]
+    )
+    return hashlib.sha256(stable.encode("utf-8")).hexdigest()[:16]
+
+
+def capture_browser_forms(snapshot: CrawlSnapshot, page, page_id: str, state_url: str) -> None:
+    if any(form.page_id == page_id and form.field_ids for form in snapshot.forms):
+        return
+    try:
+        browser_forms = page.locator("form").evaluate_all(
+            """
+            forms => {
+              const clean = value => String(value || '').replace(/\\s+/g, ' ').trim();
+              const associatedLabel = el => {
+                const id = el.getAttribute('id') || '';
+                if (!id) return '';
+                for (const label of Array.from(document.querySelectorAll('label'))) {
+                  if (label.getAttribute('for') === id) return clean(label.innerText || label.textContent || '');
+                }
+                return '';
+              };
+              const tableLabel = el => {
+                const cell = el.closest('td,th');
+                const row = el.closest('tr');
+                if (!cell || !row) return '';
+                const cells = Array.from(row.children);
+                const index = cells.indexOf(cell);
+                for (let i = index - 1; i >= 0; i--) {
+                  const text = clean(cells[i].innerText || cells[i].textContent || '');
+                  if (text) return text.replace(/\\bLength\\s*:\\s*\\d+\\s*[~-]\\s*\\d+\\b/ig, '').trim();
+                }
+                return '';
+              };
+              const fallbackLabel = el => {
+                const tag = el.tagName.toLowerCase();
+                const type = (el.getAttribute('type') || tag).toLowerCase();
+                if (tag === 'button' || type === 'button' || type === 'submit') {
+                  return clean(el.innerText || el.textContent || el.getAttribute('value') || el.getAttribute('aria-label') || type);
+                }
+                return clean(
+                  el.getAttribute('aria-label') ||
+                  el.getAttribute('placeholder') ||
+                  associatedLabel(el) ||
+                  tableLabel(el) ||
+                  el.getAttribute('name') ||
+                  el.getAttribute('id') ||
+                  tag
+                );
+              };
+              return forms.map((form, formIndex) => {
+                const controls = Array.from(form.querySelectorAll('input,select,textarea,button'))
+                  .map((el, controlIndex) => {
+                    const tag = el.tagName.toLowerCase();
+                    const type = (el.getAttribute('type') || tag).toLowerCase();
+                    return {
+                      index: controlIndex,
+                      tag,
+                      id: el.getAttribute('id') || '',
+                      name: el.getAttribute('name') || '',
+                      type,
+                      label: fallbackLabel(el),
+                      value: el.value || el.getAttribute('value') || '',
+                    };
+                  });
+                const textLines = clean(form.innerText || form.textContent || '').split(/\\s{2,}|\\n/).filter(Boolean);
+                return {
+                  index: formIndex,
+                  action: form.getAttribute('action') || null,
+                  method: (form.getAttribute('method') || 'get').toLowerCase(),
+                  label: clean(form.getAttribute('aria-label') || form.getAttribute('name') || textLines[0] || 'browser form'),
+                  controls,
+                };
+              }).filter(form => form.controls.some(control => !['button', 'submit'].includes(control.type)));
+            }
+            """
+        )
+    except Exception:
+        return
+    context = {"page_title": page.title(), "headings": []}
+    for browser_form in browser_forms:
+        form = Form(
+            id=new_id("form"),
+            page_id=page_id,
+            label=f"browser form: {browser_form.get('label') or 'form'}",
+            action=browser_form.get("action"),
+            method=browser_form.get("method") or "get",
+        )
+        for control in browser_form.get("controls") or []:
+            label = " ".join(str(control.get("label") or control.get("name") or control.get("id") or control.get("tag") or "field").split())
+            fingerprint = browser_form_fingerprint(browser_form, control, state_url)
+            evidence = Evidence(
+                id=new_id("ev"),
+                kind="ui",
+                source=state_url,
+                summary=f"browser-visible {control.get('type') or control.get('tag')} control labelled '{label}'",
+                locator=fingerprint,
+            )
+            element = UiElement(
+                id=new_id("ui"),
+                page_id=page_id,
+                selector_fingerprint=fingerprint,
+                label=label,
+                control_type=control.get("type") or control.get("tag") or "input",
+                context={
+                    **context,
+                    "form_id": form.id,
+                    "selector_id": control.get("id"),
+                    "selector_name": control.get("name"),
+                    "read_value": control.get("value", ""),
+                    "browser_reconciled_form": True,
+                },
+                evidence_ids=[evidence.id],
+            )
+            snapshot.evidence.append(evidence)
+            snapshot.elements.append(element)
+            form.field_ids.append(element.id)
+        if form.field_ids:
+            snapshot.forms.append(form)
+
+
 def probe_form_flows(snapshot: CrawlSnapshot, page, profile: Profile, page_id: str, state_url: str) -> None:
     if not profile.crawl.discover_form_flows:
         return
@@ -519,10 +751,15 @@ def replay_navigation_path(page, base_url: str, path: tuple[str, ...], profile: 
         page.goto(base_url, wait_until="networkidle")
     except Exception:
         return False
+    dismiss_blocking_overlays(page)
+    if "Home" in discover_navigation_labels(page, profile):
+        click_navigation_label(page, "Home")
+        page.wait_for_timeout(profile.crawl.navigation_wait_ms)
     for label in path:
         if not is_safe_navigation_label(label, safe_click_patterns(profile)):
             return False
-        if not click_navigation_label(page, label):
+        resolved = resolve_visible_navigation_label(page, label, profile)
+        if not click_navigation_label(page, resolved):
             return False
         page.wait_for_timeout(profile.crawl.navigation_wait_ms)
     return True
@@ -548,6 +785,7 @@ def crawl_js_state_graph(
     ai_backend: AiBackend,
     deadline: float | None = None,
     planned_labels: list[str] | None = None,
+    planned_paths: list[list[str]] | None = None,
     deprioritized_labels: list[str] | None = None,
     progress: CrawlProgress | None = None,
     progress_total: int | None = None,
@@ -566,7 +804,20 @@ def crawl_js_state_graph(
         planned_labels=planned_labels,
         deprioritized_labels=deprioritized_labels,
     )
-    pending = [((label,), root_label_keys) for label in labels[: profile.crawl.max_js_states]]
+    pending: list[tuple[tuple[str, ...], set[str]]] = []
+    seen_pending: set[tuple[str, ...]] = set()
+    for planned_path in planned_paths or []:
+        path = tuple(" ".join(str(label).split()).strip() for label in planned_path if str(label).strip())
+        normalized = tuple(normalize_term(label) for label in path)
+        if path and normalized not in seen_pending:
+            pending.append((path, root_label_keys))
+            seen_pending.add(normalized)
+    for label in labels[: profile.crawl.max_js_states]:
+        path = (label,)
+        normalized = tuple(normalize_term(item) for item in path)
+        if normalized not in seen_pending:
+            pending.append((path, root_label_keys))
+            seen_pending.add(normalized)
     visited_paths: set[tuple[str, ...]] = set()
     page_ids_by_path: dict[tuple[str, ...], str] = {(): root_page_id}
 
@@ -592,6 +843,7 @@ def crawl_js_state_graph(
         state_page_id, state_transitions = record_html_state(snapshot, page.content(), state_url)
         page_ids_by_path[path] = state_page_id
         extract_browser_facts(snapshot, page, state_page_id, state_url)
+        capture_browser_forms(snapshot, page, state_page_id, state_url)
         probe_form_flows(snapshot, page, profile, state_page_id, state_url)
         emit_progress(
             progress,
@@ -647,6 +899,7 @@ def crawl_profile(
     ontology: list[DomainTerm] | None = None,
     ai_backend: AiBackend | None = None,
     planned_labels: list[str] | None = None,
+    planned_paths: list[list[str]] | None = None,
     deprioritized_labels: list[str] | None = None,
     progress: CrawlProgress | None = None,
     progress_total: int | None = None,
@@ -692,6 +945,7 @@ def crawl_profile(
                 final_url = page.url
                 page_id, current_transitions = record_html_state(snapshot, page.content(), final_url)
                 extract_browser_facts(snapshot, page, page_id, final_url)
+                capture_browser_forms(snapshot, page, page_id, final_url)
                 probe_form_flows(snapshot, page, profile, page_id, final_url)
                 emit_progress(
                     progress,
@@ -709,20 +963,21 @@ def crawl_profile(
                 if profile.crawl.discover_js_states or profile.crawl.js_navigation_texts:
                     current_transitions.extend(
                         crawl_js_state_graph(
-                            snapshot,
-                            page,
-                            profile,
-                            final_url,
-                            page_id,
-                            seen_state_hashes,
-                            ontology,
-                            ai_backend,
-                            deadline,
-                            planned_labels,
-                            deprioritized_labels,
-                            progress,
-                            progress_total,
-                            len(visited),
+                            snapshot=snapshot,
+                            page=page,
+                            profile=profile,
+                            base_url=final_url,
+                            root_page_id=page_id,
+                            seen_state_hashes=seen_state_hashes,
+                            ontology=ontology,
+                            ai_backend=ai_backend,
+                            deadline=deadline,
+                            planned_labels=planned_labels,
+                            planned_paths=planned_paths,
+                            deprioritized_labels=deprioritized_labels,
+                            progress=progress,
+                            progress_total=progress_total,
+                            progress_offset=len(visited),
                         )
                     )
                 allowed_transitions = [t for t in current_transitions if urlparse(t.target_url).netloc in profile.host_allowlist]
@@ -737,6 +992,44 @@ def crawl_profile(
         raise CrawlError(f"Crawl failed for {target_url}. Check authentication, allowlist, and browser install. Details: {exc}") from exc
 
     return snapshot
+
+
+def sample_landing_page_text(workspace: Path, profile: Profile, start_url: str | None = None, max_chars: int = 12000) -> str:
+    target_url = start_url or profile.base_url
+    validate_url_allowed(profile, target_url)
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise CrawlError(
+            "Playwright is required for browser crawling. Install it with: "
+            "pip install -e '.[crawl]' && playwright install chromium"
+        ) from exc
+
+    auth_state = profile_root(workspace, profile.name) / profile.auth.storage_state_path
+    storage_state = str(auth_state) if auth_state.exists() else None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            try:
+                context_kwargs = {"ignore_https_errors": profile.crawl.ignore_https_errors}
+                if storage_state:
+                    context_kwargs["storage_state"] = storage_state
+                context = browser.new_context(**context_kwargs)
+                try:
+                    page = context.new_page()
+                    page.goto(target_url, wait_until="networkidle")
+                    try:
+                        text = page.locator("body").inner_text(timeout=5000)
+                    except Exception:
+                        text = page.content()
+                finally:
+                    context.close()
+            finally:
+                browser.close()
+    except Exception as exc:
+        raise CrawlError(f"Could not sample landing page text for AI domain discovery at {target_url}. Details: {exc}") from exc
+    normalized = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+    return normalized[:max_chars]
 
 
 def crawl_html_fixture(profile: Profile, html: str, url: str | None = None) -> CrawlSnapshot:

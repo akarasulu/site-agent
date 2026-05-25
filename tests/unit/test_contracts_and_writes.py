@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 import importlib
 import sys
 
@@ -8,6 +9,44 @@ from site_agent.core.storage import read_json, write_json
 from site_agent.core.synthesize.mcp import synthesize_form_tools, write_mcp_package
 from site_agent.core.synthesize.runtime import RuntimeErrorForTool, call_tool
 from site_agent.core.synthesize.contracts import diff_contracts
+
+
+def _schema_issues(value: Any, path: str = "$") -> list[str]:
+    issues: list[str] = []
+    if isinstance(value, dict):
+        properties = value.get("properties")
+        required = value.get("required")
+        if isinstance(properties, dict) or isinstance(required, list):
+            property_names = set(properties or {})
+            required_names = list(required or [])
+            duplicated = sorted({name for name in required_names if required_names.count(name) > 1})
+            missing = sorted(name for name in required_names if name not in property_names)
+            if duplicated:
+                issues.append(f"{path}: duplicate required entries: {duplicated}")
+            if missing:
+                issues.append(f"{path}: required entries missing from properties: {missing}")
+        for key, child in value.items():
+            issues.extend(_schema_issues(child, f"{path}.{key}"))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            issues.extend(_schema_issues(child, f"{path}[{index}]"))
+    return issues
+
+
+def assert_generated_schema_invariants(output_dir: Path) -> None:
+    issues: list[str] = []
+    for path in sorted(output_dir.rglob("*.json")):
+        document = read_json(path)
+        issues.extend(f"{path.relative_to(output_dir)} {issue}" for issue in _schema_issues(document))
+        if path.name == "adapter.bindings.json":
+            for index, binding in enumerate(document.get("bindings", [])):
+                fields = binding.get("selector_action_bindings", {}).get("fields", [])
+                args = [field.get("arg") for field in fields if field.get("arg")]
+                duplicated = sorted({arg for arg in args if args.count(arg) > 1})
+                if duplicated:
+                    tool_name = binding.get("tool_name", f"binding[{index}]")
+                    issues.append(f"{path.relative_to(output_dir)} {tool_name}: duplicate field args: {duplicated}")
+    assert issues == []
 
 
 def test_contract_diff_detects_renames_as_breaking_without_major_bump():
@@ -52,14 +91,19 @@ def test_contract_diff_and_write_tool_dry_run(tmp_path, monkeypatch):
     assert main(["crawl", "run", "--profile", "opsboard", "--fixture-site", str(fixture / "site")]) == 0
     assert main(["schema", "review", "--profile", "opsboard"]) == 0
     assert main(["mcp", "build", "--profile", "opsboard", "--include-writes"]) == 0
+    assert_generated_schema_invariants(Path("output/opsboard"))
 
     tools = read_json(Path("output/opsboard/mcp/tools.json"))["tools"]
     names = {tool["name"] for tool in tools}
     assert "save_settings" in names
+    save_settings = next(tool for tool in tools if tool["name"] == "save_settings")
+    assert save_settings["args"].get("required", []) == []
     assert Path("output/opsboard/mcp/contract.json").exists()
 
     args = tmp_path / "args.json"
     write_json(args, {"alert_email": "ops@example.test", "maintenance_window": "Sunday 02:00 UTC", "retention_days": "30", "dry_run": True})
+    assert main(["mcp", "call", "--profile", "opsboard", "--tool", "save_settings", "--args-json", str(args)]) == 0
+    write_json(args, {"dry_run": True})
     assert main(["mcp", "call", "--profile", "opsboard", "--tool", "save_settings", "--args-json", str(args)]) == 0
 
     baseline = Path("baseline.json")
@@ -212,6 +256,14 @@ def test_staged_action_tools_are_generated_from_dynamic_interaction_flows(tmp_pa
                 evidence_ids=["ev_port"],
             ),
             UiElement(
+                id="rule_name_confirm",
+                page_id="page",
+                selector_fingerprint="name-confirm-fp",
+                label="Rule Name",
+                control_type="text",
+                evidence_ids=["ev_name_confirm"],
+            ),
+            UiElement(
                 id="enabled",
                 page_id="page",
                 selector_fingerprint="enabled-fp",
@@ -227,7 +279,7 @@ def test_staged_action_tools_are_generated_from_dynamic_interaction_flows(tmp_pa
                 page_id="page",
                 trigger_label="Add Item",
                 flow_type="dynamic_form",
-                discovered_field_ids=["rule_name", "service_port", "enabled"],
+                discovered_field_ids=["rule_name", "rule_name_confirm", "service_port", "enabled"],
                 constraints={"rule_name": {"maxlength": "10"}},
                 cancel_supported=True,
                 requires_open_before_submit=True,
@@ -242,12 +294,15 @@ def test_staged_action_tools_are_generated_from_dynamic_interaction_flows(tmp_pa
     create_tool = next(tool for tool in tools if tool.name == "create_item")
     assert create_tool.source_type == "ui_flow"
     assert create_tool.requires_confirmation
+    assert create_tool.args.get("required", []) == []
+    assert {"rule_name", "rule_name_2", "service_port", "enabled"} <= set(create_tool.args["properties"])
     assert create_tool.args["properties"]["rule_name"]["maxLength"] == 10
     delete_tool = next(tool for tool in tools if tool.name == "delete_item")
     assert delete_tool.risk_level == "high"
     assert delete_tool.exposure_level == "internal_disabled"
 
     write_mcp_package(tmp_path, "profile", tools, bindings, "https://example.test")
+    assert_generated_schema_invariants(tmp_path / "output/profile")
     result = call_tool(
         tmp_path / "output/profile/mcp",
         "create_item",
@@ -256,6 +311,12 @@ def test_staged_action_tools_are_generated_from_dynamic_interaction_flows(tmp_pa
     assert result["status"] == "dry_run"
     assert result["adapter_action"] == "open_fill_dynamic_form"
     assert any(step["step"] == "fill_fields" for step in result["planned_steps"])
+    partial_result = call_tool(
+        tmp_path / "output/profile/mcp",
+        "create_item",
+        {"dry_run": True},
+    )
+    assert partial_result["status"] == "dry_run"
     try:
         call_tool(
             tmp_path / "output/profile/mcp",
@@ -267,6 +328,141 @@ def test_staged_action_tools_are_generated_from_dynamic_interaction_flows(tmp_pa
         assert "--browser" in str(exc)
     else:
         raise AssertionError("staged browser apply should be blocked until a browser-backed runtime exists")
+
+
+def test_generic_form_action_uses_page_path_for_semantic_name():
+    snapshot = CrawlSnapshot(
+        timestamp=utc_now(),
+        profile_id="profile",
+        run_id="run",
+        pages=[Page(id="page", url="https://example.test/#state=internet/port-binding", title="Router")],
+        forms=[Form(id="form", page_id="page", label="form", field_ids=["submit"])],
+        elements=[
+            UiElement(
+                id="submit",
+                page_id="page",
+                selector_fingerprint="submit-fp",
+                label="Refresh",
+                control_type="submit",
+                evidence_ids=["ev_submit"],
+            )
+        ],
+        evidence=[Evidence(id="ev_submit", kind="ui", source="fixture", summary="Refresh button")],
+    )
+
+    tools, bindings = synthesize_form_tools("profile", snapshot, set())
+
+    assert any(tool.name == "submit_internet_port_binding" for tool in tools)
+    binding = next(binding for binding in bindings if binding.tool_name == "submit_internet_port_binding")
+    assert binding.selector_action_bindings["purpose_label"] == "Internet Port Binding"
+
+
+def test_machine_like_form_action_prefers_page_path_name():
+    snapshot = CrawlSnapshot(
+        timestamp=utc_now(),
+        profile_id="profile",
+        run_id="run",
+        pages=[Page(id="page", url="https://example.test/#state=internet/port-binding", title="Router")],
+        forms=[Form(id="form", page_id="page", label="form", field_ids=["ssid8"])],
+        elements=[
+            UiElement(
+                id="ssid8",
+                page_id="page",
+                selector_fingerprint="ssid8-fp",
+                label="SSID8",
+                control_type="submit",
+                evidence_ids=["ev_submit"],
+            )
+        ],
+        evidence=[Evidence(id="ev_submit", kind="ui", source="fixture", summary="Machine-like button")],
+    )
+
+    tools, _ = synthesize_form_tools("profile", snapshot, set())
+
+    assert any(tool.name == "submit_internet_port_binding" for tool in tools)
+
+
+def test_form_classification_marks_port_binding_as_not_port_forwarding(tmp_path, monkeypatch):
+    from site_agent.core.form_classify import classify_forms
+    from site_agent.core.ai.backends import FakeAiBackend
+    from site_agent.core.profiles import Profile
+
+    monkeypatch.chdir(tmp_path)
+    snapshot = CrawlSnapshot(
+        timestamp=utc_now(),
+        profile_id="profile",
+        run_id="run",
+        pages=[Page(id="page", url="https://example.test/#state=internet/port-binding", title="Router")],
+        forms=[Form(id="form", page_id="page", label="form", field_ids=["lan1", "ssid1", "submit"])],
+        elements=[
+            UiElement(id="lan1", page_id="page", selector_fingerprint="lan1", label="LAN1", control_type="checkbox", evidence_ids=["ev_lan"]),
+            UiElement(id="ssid1", page_id="page", selector_fingerprint="ssid1", label="SSID1", control_type="checkbox", evidence_ids=["ev_ssid"]),
+            UiElement(id="submit", page_id="page", selector_fingerprint="submit", label="SSID8", control_type="submit", evidence_ids=["ev_submit"]),
+        ],
+    )
+    profile = Profile(id="profile", name="router", base_url="https://example.test", host_allowlist=["example.test"], created_at=utc_now())
+
+    classifications, _ = classify_forms(Path.cwd(), profile, snapshot, [], FakeAiBackend(), {})
+    tools, bindings = synthesize_form_tools("profile", snapshot, set(), classifications)
+
+    classification = classifications["form"]
+    assert classification["semantic_purpose"] == "port binding"
+    assert "port forwarding" in classification["negative_concepts"]
+    assert any(tool.name == "submit_port_binding" for tool in tools)
+    binding = next(binding for binding in bindings if binding.tool_name == "submit_port_binding")
+    assert binding.selector_action_bindings["form_classification"]["negative_concepts"]
+
+
+def test_semantic_form_tools_are_deduplicated_by_purpose_and_field_shape():
+    snapshot = CrawlSnapshot(
+        timestamp=utc_now(),
+        profile_id="profile",
+        run_id="run",
+        pages=[Page(id="page", url="https://example.test/#state=internet/security/port-forwarding", title="Router")],
+        forms=[
+            Form(id="form_1", page_id="page", label="form", field_ids=["name_1", "protocol_1", "lan_1", "wan_1", "internal_1"]),
+            Form(id="form_2", page_id="page", label="form", field_ids=["name_2", "protocol_2", "lan_2", "wan_2", "internal_2"]),
+        ],
+        elements=[
+            UiElement(id="name_1", page_id="page", selector_fingerprint="name1", label="Name", control_type="text", evidence_ids=["ev1"]),
+            UiElement(id="protocol_1", page_id="page", selector_fingerprint="protocol1", label="Protocol", control_type="select", evidence_ids=["ev1"]),
+            UiElement(id="lan_1", page_id="page", selector_fingerprint="lan1", label="LAN Host", control_type="text", evidence_ids=["ev1"]),
+            UiElement(id="wan_1", page_id="page", selector_fingerprint="wan1", label="WAN Port", control_type="text", evidence_ids=["ev1"]),
+            UiElement(id="internal_1", page_id="page", selector_fingerprint="internal1", label="LAN Host Port", control_type="text", evidence_ids=["ev1"]),
+            UiElement(id="name_2", page_id="page", selector_fingerprint="name2", label="Name", control_type="text", evidence_ids=["ev2"]),
+            UiElement(id="protocol_2", page_id="page", selector_fingerprint="protocol2", label="Protocol", control_type="select", evidence_ids=["ev2"]),
+            UiElement(id="lan_2", page_id="page", selector_fingerprint="lan2", label="LAN Host", control_type="text", evidence_ids=["ev2"]),
+            UiElement(id="wan_2", page_id="page", selector_fingerprint="wan2", label="WAN Port", control_type="text", evidence_ids=["ev2"]),
+            UiElement(id="internal_2", page_id="page", selector_fingerprint="internal2", label="LAN Host Port", control_type="text", evidence_ids=["ev2"]),
+        ],
+    )
+    classifications = {
+        "form_1": {
+            "form_id": "form_1",
+            "semantic_purpose": "port forwarding rule",
+            "operation": "create_or_update",
+            "confidence": 0.84,
+            "negative_concepts": ["port binding"],
+            "reasoning_summary": "port forwarding fields",
+            "evidence_ids": ["ev1"],
+        },
+        "form_2": {
+            "form_id": "form_2",
+            "semantic_purpose": "port forwarding rule",
+            "operation": "create_or_update",
+            "confidence": 0.84,
+            "negative_concepts": ["port binding"],
+            "reasoning_summary": "port forwarding fields",
+            "evidence_ids": ["ev2"],
+        },
+    }
+
+    tools, bindings = synthesize_form_tools("profile", snapshot, set(), classifications)
+
+    names = [tool.name for tool in tools]
+    assert names.count("submit_port_forwarding_rule") == 1
+    assert not any(name.startswith("submit_port_forwarding_rule_") for name in names)
+    assert len([binding for binding in bindings if binding.tool_name == "submit_port_forwarding_rule"]) == 1
 
 
 def test_benchmark_pack_runs_fixture_types_including_staged_dialogs(tmp_path, monkeypatch):
@@ -312,6 +508,7 @@ def test_package_build_creates_rag_bundle_with_private_boundary(tmp_path, monkey
     assert (package_dir / "public/ansible/ansible-spec.json").exists()
     assert (package_dir / "private/adapter.bindings.json").exists()
     assert (Path("output/opsboard/packages") / f"{package_dir.name}.zip").exists()
+    assert_generated_schema_invariants(Path("output/opsboard"))
 
     assert main(["package", "build", "--profile", "opsboard", "--public-only", "--no-zip"]) == 0
     assert not (package_dir / "private/adapter.bindings.json").exists()

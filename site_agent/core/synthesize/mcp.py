@@ -38,6 +38,86 @@ def action_tool_name(label: str) -> str:
     return slug
 
 
+def generic_form_label(label: str) -> bool:
+    clean = re.sub(r"[^a-z0-9]+", " ", label.lower()).strip()
+    return clean in {"", "form", "submit", "save", "apply", "ok", "refresh", "off", "on", "low", "middle", "high"}
+
+
+def machine_like_label(label: str) -> bool:
+    clean = label.strip()
+    normalized = re.sub(r"[^a-zA-Z0-9]+", "_", clean).strip("_")
+    if not normalized:
+        return True
+    if " " not in clean and re.search(r"\d", normalized):
+        return True
+    if "_" in normalized and normalized.lower() == normalized:
+        return True
+    return normalized.lower() in {"password", "hash", "dscp"}
+
+
+def form_purpose_label(form: Form, page_label: str, fields: list, classification: dict | None = None) -> str:
+    if classification and float(classification.get("confidence", 0.0) or 0.0) >= 0.65:
+        purpose = str(classification.get("semantic_purpose", "")).strip()
+        if purpose and purpose != "unknown":
+            return purpose
+    button = next((field for field in fields if field.control_type in {"submit", "button"}), None)
+    candidate = button.label if button else form.label
+    if page_label and not generic_form_label(page_label):
+        if generic_form_label(candidate) or machine_like_label(candidate):
+            return page_label
+    if not generic_form_label(candidate):
+        return candidate
+    if page_label and not generic_form_label(page_label):
+        return page_label
+    useful_fields = [
+        field.label
+        for field in fields
+        if field.control_type not in {"submit", "button", "hidden"} and not generic_form_label(field.label)
+    ]
+    if useful_fields:
+        return " ".join(useful_fields[:3])
+    return form.label or "form"
+
+
+def classified_action_tool_name(label: str, classification: dict | None = None) -> str:
+    if not classification or float(classification.get("confidence", 0.0) or 0.0) < 0.75:
+        return action_tool_name(label)
+    operation = str(classification.get("operation", "")).lower()
+    subject = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") or "form"
+    if operation in {"create", "add"}:
+        return f"create_{subject}"
+    if operation in {"create_or_update", "update", "configure", "set"}:
+        return f"submit_{subject}"
+    if operation in {"delete", "remove"}:
+        return f"delete_{subject}"
+    if operation in {"enable", "disable", "activate", "deactivate"}:
+        return f"{operation}_{subject}"
+    return action_tool_name(label)
+
+
+def field_shape_label(label: str) -> str:
+    clean = re.sub(r"[^a-z0-9]+", " ", label.lower()).strip()
+    clean = re.sub(r"\b\d+\b", "", clean)
+    return re.sub(r"\s+", " ", clean).strip()
+
+
+def semantic_form_dedupe_key(label: str, fields: list, classification: dict | None = None) -> tuple | None:
+    classified = bool(classification and float(classification.get("confidence", 0.0) or 0.0) >= 0.65)
+    useful = [
+        (field_shape_label(field.label), field.control_type)
+        for field in fields
+        if field.control_type not in {"submit", "button", "hidden", "radio"} and not generic_form_label(field.label)
+    ]
+    useful = [(field_label, control_type) for field_label, control_type in useful if field_label]
+    if not useful:
+        return None
+    if not classified and len(useful) < 4:
+        return None
+    purpose = str(classification.get("semantic_purpose", "")).strip().lower() if classified and classification else field_shape_label(label)
+    operation = str(classification.get("operation", "")).strip().lower() if classified and classification else "submit"
+    return (purpose, operation, tuple(sorted(useful)))
+
+
 def staged_subject(label: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
     parts = [part for part in slug.split("_") if part]
@@ -115,6 +195,18 @@ def field_arg_name(label: str, fallback: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") or fallback
 
 
+def unique_arg_name(base: str, seen: set[str]) -> str:
+    if base not in seen:
+        seen.add(base)
+        return base
+    index = 2
+    while f"{base}_{index}" in seen:
+        index += 1
+    candidate = f"{base}_{index}"
+    seen.add(candidate)
+    return candidate
+
+
 def json_schema_for_field(label: str, constraints: dict) -> dict:
     schema: dict = {"type": "string", "description": label}
     if "maxlength" in constraints:
@@ -134,15 +226,23 @@ def json_schema_for_field(label: str, constraints: dict) -> dict:
     return schema
 
 
+def action_required_args() -> list[str]:
+    # UI actions are dry-run by default and the runtime can plan/apply with
+    # partial arguments. Marking every captured form control as required makes
+    # generated MCP/Ansible tasks unusable for review-first workflows.
+    return []
+
+
 def flow_field_specs(flow, element_by_id: dict) -> tuple[dict, list[str], list[dict]]:
     properties: dict = {}
     required: list[str] = []
     bindings: list[dict] = []
+    seen_args: set[str] = set()
     for field_id in flow.discovered_field_ids:
         field = element_by_id.get(field_id)
         if not field or field.control_type in {"submit", "button", "hidden"}:
             continue
-        arg = field_arg_name(field.label, field.id)
+        arg = unique_arg_name(field_arg_name(field.label, field.id), seen_args)
         constraints = {}
         constraints.update(field.context.get("constraints", {}) if isinstance(field.context, dict) else {})
         constraints.update(flow.constraints.get(field_id, {}) if isinstance(flow.constraints, dict) else {})
@@ -194,7 +294,8 @@ def synthesize_flow_tools(
     bindings: list[AdapterBinding] = []
     page_by_id = {page.id: page for page in snapshot.pages}
     for flow in snapshot.interaction_flows:
-        field_properties, required, field_bindings = flow_field_specs(flow, element_by_id)
+        field_properties, discovered_required, field_bindings = flow_field_specs(flow, element_by_id)
+        required = action_required_args()
         subject = staged_subject(flow.trigger_label)
         evidence_ids = list(flow.evidence_ids)
         for field in field_bindings:
@@ -219,7 +320,7 @@ def synthesize_flow_tools(
                 return_schema={"type": "object", "properties": {"status": {"type": "string"}, "planned_steps": {"type": "array"}, "evidence_ids": {"type": "array", "items": {"type": "string"}}}},
                 risk_level="medium",
                 evidence_ids=evidence_ids,
-                confidence=0.82 if required else 0.68,
+                confidence=0.82 if discovered_required else 0.68,
                 requires_confirmation=True,
                 dry_run_supported=True,
                 exposure_level="review_required",
@@ -402,7 +503,12 @@ def synthesize_unmapped_page_tools(
     return tools, bindings
 
 
-def synthesize_form_tools(profile_id: str, snapshot: CrawlSnapshot, seen_names: set[str] | None = None) -> tuple[list[ToolSpec], list[AdapterBinding]]:
+def synthesize_form_tools(
+    profile_id: str,
+    snapshot: CrawlSnapshot,
+    seen_names: set[str] | None = None,
+    form_classifications: dict[str, dict] | None = None,
+) -> tuple[list[ToolSpec], list[AdapterBinding]]:
     element_by_id = {element.id: element for element in snapshot.elements}
     flows_by_page: dict[str, list] = {}
     for flow in snapshot.interaction_flows:
@@ -410,20 +516,40 @@ def synthesize_form_tools(profile_id: str, snapshot: CrawlSnapshot, seen_names: 
     tools: list[ToolSpec] = []
     bindings: list[AdapterBinding] = []
     seen = seen_names if seen_names is not None else set()
+    page_by_id = {page.id: page for page in snapshot.pages}
+    emitted_semantic_forms: set[tuple] = set()
     for form in snapshot.forms:
         fields = [element_by_id[field_id] for field_id in form.field_ids if field_id in element_by_id]
-        button = next((field for field in fields if field.control_type in {"submit", "button"}), None)
-        label = button.label if button else form.label
+        if not fields:
+            continue
+        page = page_by_id.get(form.page_id)
+        page_label = readable_page_label(page.url, page.title, page.headings) if page else ""
+        classification = (form_classifications or {}).get(form.id)
+        label = form_purpose_label(form, page_label, fields, classification)
+        dedupe_key = semantic_form_dedupe_key(label, fields, classification)
+        if dedupe_key and dedupe_key in emitted_semantic_forms:
+            continue
+        if dedupe_key:
+            emitted_semantic_forms.add(dedupe_key)
         risk_level, risk_reason = classify_action_risk(label, [field.label for field in fields])
-        name = unique_name(action_tool_name(label), seen)
+        name = unique_name(classified_action_tool_name(label, classification), seen)
         properties = {}
-        required = []
+        required = action_required_args()
+        form_field_bindings = []
+        seen_args: set[str] = set()
         for field in fields:
             if field.control_type in {"submit", "button", "hidden"}:
                 continue
-            arg = re.sub(r"[^a-z0-9]+", "_", field.label.lower()).strip("_") or field.id
+            arg = unique_arg_name(field_arg_name(field.label, field.id), seen_args)
             properties[arg] = {"type": "string", "description": field.label}
-            required.append(arg)
+            form_field_bindings.append(
+                {
+                    "ui_element_id": field.id,
+                    "label": field.label,
+                    "arg": arg,
+                    "control_type": field.control_type,
+                }
+            )
         properties["dry_run"] = {"type": "boolean", "default": True}
         properties["confirm"] = {"type": "boolean", "default": False, "description": "Required for apply mode when this tool requires confirmation."}
         evidence_ids = [eid for field in fields for eid in field.evidence_ids]
@@ -437,10 +563,18 @@ def synthesize_form_tools(profile_id: str, snapshot: CrawlSnapshot, seen_names: 
             if page_flows
             else ""
         )
+        classification_summary = ""
+        if classification:
+            negatives = ", ".join(classification.get("negative_concepts", [])[:4])
+            classification_summary = (
+                f" Classified purpose: {classification.get('semantic_purpose')} ({classification.get('operation')}, "
+                f"confidence {classification.get('confidence')}). {classification.get('reasoning_summary', '')}"
+                + (f" Not: {negatives}." if negatives else "")
+            )
         tools.append(
             ToolSpec(
                 name=name,
-                description=f"UI-backed form action for {form.label}. Generated from discovered UI evidence even without external documentation. Dry-run by default. Risk: {risk_level}. {risk_reason}{flow_summary}",
+                description=f"UI-backed form action for {label}. Generated from discovered UI evidence even without external documentation. Dry-run by default. Risk: {risk_level}. {risk_reason}{flow_summary}{classification_summary}",
                 args={"type": "object", "properties": properties, "required": required, "additionalProperties": False},
                 return_schema={"type": "object", "properties": {"status": {"type": "string"}, "evidence_ids": {"type": "array", "items": {"type": "string"}}}},
                 risk_level=risk_level,
@@ -450,7 +584,7 @@ def synthesize_form_tools(profile_id: str, snapshot: CrawlSnapshot, seen_names: 
                 dry_run_supported=True,
                 exposure_level=exposure,
                 source_type="ui_form",
-                reasoning_summary=f"Generated from discovered form controls and action labels. {risk_reason}",
+                reasoning_summary=(classification.get("reasoning_summary") if classification else f"Generated from discovered form controls and action labels. {risk_reason}"),
             )
         )
         bindings.append(
@@ -463,16 +597,10 @@ def synthesize_form_tools(profile_id: str, snapshot: CrawlSnapshot, seen_names: 
                     "method": form.method or "get",
                     "action_url": form.action,
                     "form_id": form.id,
-                    "fields": [
-                        {
-                            "ui_element_id": field.id,
-                            "label": field.label,
-                            "arg": re.sub(r"[^a-z0-9]+", "_", field.label.lower()).strip("_") or field.id,
-                            "control_type": field.control_type,
-                        }
-                        for field in fields
-                        if field.control_type not in {"submit", "button", "hidden"}
-                    ],
+                    "purpose_label": label,
+                    "page_label": page_label,
+                    "form_classification": classification,
+                    "fields": form_field_bindings,
                     "interaction_flows": [
                         {
                             "flow_id": flow.id,

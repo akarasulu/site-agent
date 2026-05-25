@@ -94,6 +94,7 @@ def test_browser_staged_action_executor_round_trips_dynamic_items(tmp_path, monk
     try:
         wait_for_url(f"{base_url}/items.html")
         monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("SITE_AGENT_ALLOW_NO_AI", "1")
         assert main(["profile", "init", "--name", "opsboard", "--base-url", f"{base_url}/index.html"]) == 0
         write_json(Path("profiles/opsboard/ontology.seed.json"), read_json(fixture / "ontology.seed.json"))
         (Path("profiles/opsboard/docs") / "opsboard-admin-guide.md").write_text(

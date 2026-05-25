@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "site-agent"
-version = "0.3.1"
+version = "1.0.0"
 description = "Generic, evidence-backed website interaction mapper and MCP generator."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,7 +13,7 @@ authors = [
 ]
 keywords = ["mcp", "playwright", "automation", "crawler", "ansible", "ai-agents"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",

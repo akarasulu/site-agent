@@ -107,6 +107,100 @@ def plan_missing_terms(schema: MappedSchema, limit: int) -> list[DomainTerm]:
     return missing[:limit]
 
 
+def snapshot_summary(snapshot: CrawlSnapshot, schema: MappedSchema) -> dict:
+    mapped_ids = {mapping.domain_term_id for mapping in schema.mappings if mapping.domain_term_id and mapping.status in {"ready", "review"}}
+    page_paths = []
+    for page in snapshot.pages[:80]:
+        path = state_path(page)
+        page_paths.append({"url": page.url, "path": path, "headings": page.headings[:5]})
+    return {
+        "run_id": snapshot.run_id,
+        "pages": len(snapshot.pages),
+        "forms": len(snapshot.forms),
+        "elements": len(snapshot.elements),
+        "transitions": len(snapshot.transitions),
+        "mapped_terms": len(mapped_ids),
+        "ontology_terms": len(schema.ontology),
+        "page_paths": page_paths,
+        "observed_navigation_labels": observed_navigation_labels(snapshot)[:120],
+    }
+
+
+def weak_areas_from_missing_terms(missing_terms: list[DomainTerm]) -> list[dict]:
+    return [
+        {
+            "term_id": term.id,
+            "canonical_name": term.canonical_name,
+            "aliases": term.aliases,
+            "confidence": term.confidence,
+            "source_evidence_ids": list(term.sources),
+            "weakness": "ontology term has no ready/review UI mapping",
+        }
+        for term in missing_terms
+    ]
+
+
+def directional_targets(
+    snapshot: CrawlSnapshot,
+    schema: MappedSchema,
+    missing_terms: list[DomainTerm],
+    ai_backend: AiBackend,
+    research_memory: dict | None,
+) -> list[dict]:
+    weak_areas = weak_areas_from_missing_terms(missing_terms)
+    try:
+        targets = ai_backend.plan_directional_crawl(snapshot_summary(snapshot, schema), weak_areas, schema.ontology, research_memory)
+    except Exception:
+        return []
+    planned = []
+    for target in targets:
+        labels = []
+        seen = set()
+        for label in [*target.branch_path, *target.labels]:
+            clean = " ".join(label.split()).strip()
+            key = normalize_term(clean)
+            if clean and key not in seen:
+                labels.append(clean)
+                seen.add(key)
+        if not labels:
+            continue
+        planned.append(
+            {
+                "branch_path": target.branch_path,
+                "labels": labels,
+                "missing_concepts": target.missing_concepts,
+                "reason": target.reason,
+                "priority": round(max(0.0, min(1.0, target.priority)), 3),
+                "confidence": round(max(0.0, min(1.0, target.confidence)), 3),
+            }
+        )
+    planned.sort(key=lambda item: (-item["priority"], -item["confidence"], " > ".join(item["branch_path"])))
+    return planned[:20]
+
+
+def disproven_directional_labels(research_memory: dict | None) -> set[str]:
+    if not research_memory:
+        return set()
+    negative_concepts = {normalize_term(concept) for concept in research_memory.get("negative_concepts", [])}
+    labels: set[str] = set()
+    for outcome in research_memory.get("directional_outcomes", []):
+        missing = {normalize_term(concept) for concept in outcome.get("missing_concepts", [])}
+        branch = [str(label) for label in outcome.get("branch_path", []) if str(label).strip()]
+        if outcome.get("status") == "reached" and concepts_overlap(negative_concepts, missing) and branch:
+            labels.add(normalize_term(branch[-1]))
+    return labels
+
+
+def concepts_overlap(left: set[str], right: set[str]) -> bool:
+    for left_item in left:
+        left_tokens = {part for part in left_item.split() if len(part) > 2}
+        for right_item in right:
+            right_tokens = {part for part in right_item.split() if len(part) > 2}
+            if left_item in right_item or right_item in left_item or (left_tokens and left_tokens <= right_tokens):
+                return True
+    return False
+
+
 def build_crawl_plan(
     profile: Profile,
     snapshot: CrawlSnapshot,
@@ -122,6 +216,22 @@ def build_crawl_plan(
     ai_scores = ai_plan_scores(observed_labels, missing_terms, ai_backend)
     promoted = {normalize_term(label) for label in (memory or {}).get("promoted_labels", [])}
     demoted = {normalize_term(label) for label in (memory or {}).get("demoted_labels", [])}
+    research_memory = (memory or {}).get("research_session") or memory
+    disproven = disproven_directional_labels(research_memory)
+    demoted.update(disproven)
+    directed_targets = directional_targets(snapshot, schema, missing_terms, ai_backend, research_memory)
+    directed_targets = [
+        target
+        for target in directed_targets
+        if not (
+            target.get("branch_path")
+            and normalize_term(target["branch_path"][-1]) in disproven
+            and concepts_overlap(
+                {normalize_term(concept) for concept in target.get("missing_concepts", [])},
+                {normalize_term(concept) for concept in (research_memory or {}).get("negative_concepts", [])},
+            )
+        )
+    ]
 
     target_terms = []
     for term in missing_terms:
@@ -160,13 +270,39 @@ def build_crawl_plan(
         candidates.sort(key=lambda item: (-item["score"], item["label"]))
         target_terms.append(
             {
-            "term_id": term.id,
-            "canonical_name": term.canonical_name,
-            "confidence": term.confidence,
-            "source_evidence_ids": list(term.sources),
-            "candidate_labels": candidates[:10],
+                "term_id": term.id,
+                "canonical_name": term.canonical_name,
+                "confidence": term.confidence,
+                "source_evidence_ids": list(term.sources),
+                "candidate_labels": candidates[:10],
             }
         )
+
+    for target in directed_targets:
+        for label in target["labels"]:
+            normalized = normalize_term(label)
+            score = target["priority"] * target["confidence"]
+            existing = all_candidates.get(normalized)
+            concepts = target.get("missing_concepts", [])
+            if existing is None or score > existing["score"]:
+                all_candidates[normalized] = {
+                    "label": label,
+                    "score": round(score, 3),
+                    "concepts": concepts,
+                    "sources": ["ai_directional"],
+                    "memory": "promoted" if normalized in promoted else "demoted" if normalized in demoted else "neutral",
+                    "branch_path": target.get("branch_path", []),
+                    "reason": target.get("reason", ""),
+                }
+            else:
+                existing.setdefault("sources", [])
+                if "ai_directional" not in existing["sources"]:
+                    existing["sources"].append("ai_directional")
+                for concept in concepts:
+                    if concept not in existing.get("concepts", []):
+                        existing.setdefault("concepts", []).append(concept)
+                existing.setdefault("branch_path", target.get("branch_path", []))
+                existing.setdefault("reason", target.get("reason", ""))
 
     prioritized = sorted(
         [item for item in all_candidates.values() if item["score"] > 0],
@@ -190,12 +326,17 @@ def build_crawl_plan(
             "noise_labels": len(set(normalize_term(label) for label in noisy_labels)),
             "memory_promoted_labels": len(promoted),
             "memory_demoted_labels": len(demoted),
+            "memory_disproven_labels": len(disproven),
+            "directional_targets": len(directed_targets),
         },
         "target_terms": target_terms,
+        "directional_targets": directed_targets,
         "prioritized_labels": prioritized[:60],
         "deprioritized_labels": sorted(set(noisy_labels)),
         "debug_summary": debug_report["summary"],
     }
+
+
 def write_crawl_plan(workspace: Path, profile: Profile, plan: dict) -> Path:
     path = output_root(workspace, profile.name) / "reports" / f"crawl-plan-{plan['source_run_id']}.json"
     write_json(path, plan)

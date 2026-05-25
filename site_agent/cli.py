@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
+import time
 from pathlib import Path
 
 from site_agent.core.completion import bash_script, complete, fish_script, zsh_script
 from site_agent.core.actions import build_action_report
 from site_agent.core.ai.analyze import build_ai_analysis_report
-from site_agent.core.ai.backends import get_ai_backend
-from site_agent.core.ai.research import discover_docs
+from site_agent.core.ai.backends import NoopAiBackend, get_ai_backend
+from site_agent.core.ai.research import discover_docs, discover_ui_domain, load_research_session, write_research_session
 from site_agent.core.align.lexical import align_snapshot
 from site_agent.core.config_coverage import build_config_coverage_report, load_settings_snapshot
 from site_agent.core.config_versioning import (
@@ -25,13 +27,16 @@ from site_agent.core.config_versioning import (
     verify_restore_snapshot,
     write_config_snapshot,
 )
-from site_agent.core.crawl.playwright import CrawlError, crawl_fixture_site, crawl_html_fixture, crawl_profile
+from site_agent.core.crawl.playwright import CrawlError, crawl_fixture_site, crawl_html_fixture, crawl_profile, sample_landing_page_text
 from site_agent.core.debug import build_debug_report
+from site_agent.core.debug import state_path
 from site_agent.core.doctor import doctor_checks, run_playwright_install
 from site_agent.core.drift.check import compare_snapshots
+from site_agent.core.form_classify import classify_forms
 from site_agent.core.ingest.docs import build_ontology_artifact
+from site_agent.core.inventory import inventory_profile
 from site_agent.core.merge import merge_snapshots, write_merged_snapshot
-from site_agent.core.models import CrawlSnapshot, Evidence, Form, InteractionFlow, Page, Transition, UiElement
+from site_agent.core.models import CrawlSnapshot, Evidence, Form, InteractionFlow, Page, Transition, UiElement, utc_now
 from site_agent.core.package import build_profile_package
 from site_agent.core.plan import build_crawl_plan, latest_crawl_plan, write_crawl_plan
 from site_agent.core.profiles import configure_auth, import_example_profile, init_profile, load_profile, output_root
@@ -183,6 +188,7 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
     crawl_plan = None
     planned_labels: list[str] = []
+    planned_paths: list[list[str]] = []
     deprioritized_labels: list[str] = []
     progress_total = previous_snapshot_total(profile.name)
     if getattr(args, "use_plan", None):
@@ -199,9 +205,19 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
         ]
         max_planned = args.max_planned_labels if args.max_planned_labels is not None else len(observed_plan_labels) + 15
         planned_labels = [*observed_plan_labels, *generated_plan_labels[:15]][:max_planned]
+        for target in crawl_plan.get("directional_targets", []):
+            branch = [str(label) for label in target.get("branch_path", []) if str(label).strip()]
+            labels = [str(label) for label in target.get("labels", []) if str(label).strip()]
+            if branch:
+                planned_paths.append(branch)
+            for label in labels:
+                if branch and label.lower() in {item.lower() for item in branch}:
+                    continue
+                planned_paths.append([*branch, label] if branch else [label])
+        planned_paths = planned_paths[: max_planned or len(planned_paths)]
         deprioritized_labels = [str(label) for label in crawl_plan.get("deprioritized_labels", [])]
-        progress_total = progress_total or len(planned_labels) or None
-        print(f"Loaded crawl plan {crawl_plan.get('plan_id', args.use_plan)} with {len(planned_labels)} prioritized label(s).")
+        progress_total = progress_total or len(planned_paths) or len(planned_labels) or None
+        print(f"Loaded crawl plan {crawl_plan.get('plan_id', args.use_plan)} with {len(planned_labels)} prioritized label(s) and {len(planned_paths)} directed path(s).")
     if args.probe_budget_seconds is not None:
         profile.crawl.max_crawl_seconds = args.probe_budget_seconds
     if args.target_depth is not None:
@@ -213,11 +229,53 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
         snapshot = crawl_html_fixture(profile, html, args.url)
     else:
         ai_backend = get_ai_backend()
+        allow_no_ai = os.environ.get("SITE_AGENT_ALLOW_NO_AI", "").strip().lower() in {"1", "true", "yes", "on"}
+        if type(ai_backend) is NoopAiBackend and not allow_no_ai:
+            raise RuntimeError(
+                "Live crawl requires an active AI backend for autonomous UI domain discovery. "
+                "Set SITE_AGENT_AI_PROVIDER=openai with OPENAI_API_KEY, or set SITE_AGENT_ALLOW_NO_AI=1 for an explicit offline/debug crawl."
+            )
+        if type(ai_backend) is not NoopAiBackend:
+            research_session = load_research_session(workspace(), profile)
+            reuse_research = bool(getattr(args, "use_plan", None)) and bool(research_session.get("terms")) and not getattr(args, "refresh_ai_domain", False)
+            if reuse_research:
+                print(
+                    "Pre-crawl AI UI domain discovery skipped: reusing existing research session "
+                    f"with {len(research_session.get('terms', []))} term(s)."
+                )
+            else:
+                ui_text = sample_landing_page_text(workspace(), profile, args.url)
+                markdown_path, _ = discover_ui_domain(workspace(), profile, ai_backend, ui_text, args.max_research_sources)
+                print(f"Pre-crawl AI UI domain evidence saved: {markdown_path}")
         if args.research_product_hint:
             markdown_path, _ = discover_docs(workspace(), profile, ai_backend, args.research_product_hint, args.max_research_sources)
             print(f"Pre-crawl AI documentation evidence saved: {markdown_path}")
         ontology, doc_evidence = build_ontology_artifact(workspace(), profile, ai_backend)
         print(f"Pre-crawl ontology ready: {len(ontology)} term(s), {len(doc_evidence)} documentation evidence item(s).")
+        inventory_deadline = None
+        if profile.crawl.max_crawl_seconds > 0:
+            inventory_deadline = time.monotonic() + min(120, max(20, profile.crawl.max_crawl_seconds // 3))
+        site_inventory = inventory_profile(
+            workspace(),
+            profile,
+            ontology,
+            max_nodes=profile.crawl.max_js_states,
+            max_depth=profile.crawl.max_js_depth,
+            deadline=inventory_deadline,
+        )
+        inventory_path = output_root(workspace(), profile.name) / "reports" / f"site-tree-{utc_now().replace(':', '').replace('+', '_')}.json"
+        write_json(inventory_path, site_inventory)
+        inventory_paths = [node["path"] for node in site_inventory.get("nodes", []) if node.get("path")]
+        existing_path_keys = {tuple(path) for path in planned_paths}
+        for path in inventory_paths:
+            key = tuple(path)
+            if key not in existing_path_keys:
+                planned_paths.append(path)
+                existing_path_keys.add(key)
+        print(
+            f"Mandatory site inventory saved: {inventory_path} "
+            f"({site_inventory.get('node_count', 0)} node(s), complete={site_inventory.get('coverage', {}).get('complete', False)})."
+        )
         if progress_total:
             print(f"Crawl progress estimate: using previous/plan total of {progress_total} state(s).")
         else:
@@ -229,6 +287,7 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
             ontology,
             ai_backend,
             planned_labels,
+            planned_paths,
             deprioritized_labels,
             crawl_progress_printer(progress_total),
             progress_total,
@@ -236,25 +295,131 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
     snapshot = redact_snapshot(snapshot, profile.crawl.redaction_patterns)
     path = output_root(workspace(), profile.name) / "crawl" / f"snapshot-{snapshot.run_id}.json"
     write_json(path, snapshot)
+    if crawl_plan:
+        research_session = load_research_session(workspace(), profile)
+        outcomes = directional_target_outcomes(crawl_plan, snapshot)
+        research_session["directional_outcomes"] = outcomes
+        research_session.setdefault("passes", []).append(
+            {
+                "kind": "directional_crawl_execution",
+                "source_plan_id": crawl_plan.get("plan_id"),
+                "run_id": snapshot.run_id,
+                "targets": len(outcomes),
+                "reached": sum(1 for item in outcomes if item["status"] == "reached"),
+                "partial": sum(1 for item in outcomes if item["status"] == "partial"),
+                "failed": sum(1 for item in outcomes if item["status"] == "failed"),
+            }
+        )
+        session_path = write_research_session(workspace(), profile, research_session)
+        print(f"Updated research session with directional crawl outcomes: {session_path}")
     print(f"Saved crawl snapshot: {path}")
     print(f"Found {len(snapshot.pages)} page(s), {len(snapshot.forms)} form(s), {len(snapshot.elements)} UI element(s), {len(snapshot.transitions)} transition(s).")
     print(f"Next: site-agent schema review --profile {profile.name}")
     return 0
 
 
+def cmd_crawl_inventory(args: argparse.Namespace) -> int:
+    profile = load_profile(workspace(), args.profile)
+    ontology, doc_evidence = build_ontology_artifact(workspace(), profile, NoopAiBackend())
+    deadline = time.monotonic() + args.budget_seconds if args.budget_seconds and args.budget_seconds > 0 else None
+    site_inventory = inventory_profile(
+        workspace(),
+        profile,
+        ontology,
+        max_nodes=args.max_nodes or profile.crawl.max_js_states,
+        max_depth=args.max_depth or profile.crawl.max_js_depth,
+        deadline=deadline,
+    )
+    path = output_root(workspace(), profile.name) / "reports" / f"site-tree-{utc_now().replace(':', '').replace('+', '_')}.json"
+    write_json(path, site_inventory)
+    print(f"Saved mandatory site inventory: {path}")
+    print(
+        f"Visited {site_inventory.get('node_count', 0)} node(s); "
+        f"queued={site_inventory.get('coverage', {}).get('queued_paths', 0)}; "
+        f"complete={site_inventory.get('coverage', {}).get('complete', False)}; "
+        f"ontology_terms={len(ontology)}; doc_evidence={len(doc_evidence)}."
+    )
+    return 0
+
+
+def directional_target_outcomes(crawl_plan: dict, snapshot: CrawlSnapshot) -> list[dict]:
+    observed_paths = [state_path(page) for page in snapshot.pages]
+    observed_labels = {normalize_label(label) for transition in snapshot.transitions for label in [transition.trigger_label]}
+    for path in observed_paths:
+        observed_labels.update(normalize_label(label) for label in path)
+    outcomes = []
+    for target in crawl_plan.get("directional_targets", []):
+        branch = [str(label) for label in target.get("branch_path", []) if str(label).strip()]
+        labels = [str(label) for label in target.get("labels", []) if str(label).strip()]
+        normalized_branch = [normalize_label(label) for label in branch]
+        normalized_labels = {normalize_label(label) for label in labels}
+        reached = False
+        partial = False
+        for path in observed_paths:
+            normalized_path = [normalize_label(label) for label in path]
+            if normalized_branch and normalized_path[: len(normalized_branch)] == normalized_branch:
+                reached = True
+                break
+            if normalized_branch and any(label in normalized_path for label in normalized_branch):
+                partial = True
+        if not reached and normalized_labels & observed_labels:
+            partial = True
+        outcomes.append(
+            {
+                "branch_path": branch,
+                "labels": labels,
+                "missing_concepts": target.get("missing_concepts", []),
+                "status": "reached" if reached else "partial" if partial else "failed",
+                "reason": target.get("reason", ""),
+                "priority": target.get("priority", 0.0),
+                "confidence": target.get("confidence", 0.0),
+            }
+        )
+    return outcomes
+
+
+def normalize_label(value: str) -> str:
+    from site_agent.core.ingest.docs import normalize_term
+
+    return normalize_term(value)
+
+
 def cmd_crawl_plan(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
     snapshot = load_latest_snapshot(profile.name)
     _, schema = latest_schema(output_root(workspace(), profile.name) / "schema")
-    plan = build_crawl_plan(profile, snapshot, schema, get_ai_backend(), args.max_terms, crawl_memory(profile.name))
+    memory = crawl_memory(profile.name) or {}
+    memory["research_session"] = load_research_session(workspace(), profile)
+    plan = build_crawl_plan(profile, snapshot, schema, get_ai_backend(), args.max_terms, memory)
     path = write_crawl_plan(workspace(), profile, plan)
+    research_session = memory["research_session"]
+    research_session["weak_areas"] = plan.get("target_terms", [])
+    research_session["directional_targets"] = plan.get("directional_targets", [])
+    research_session.setdefault("passes", []).append(
+        {
+            "kind": "directional_crawl_planning",
+            "source_run_id": snapshot.run_id,
+            "missing_terms": plan["summary"]["missing_terms"],
+            "directional_targets": plan["summary"].get("directional_targets", 0),
+            "plan_path": str(path),
+        }
+    )
+    session_path = write_research_session(workspace(), profile, research_session)
     print(f"Saved crawl plan: {path}")
+    print(f"Updated research session: {session_path}")
     print(
         "Plan: "
         f"{plan['summary']['missing_terms']} missing term(s), "
         f"{plan['summary']['prioritized_labels']} prioritized label(s), "
-        f"{plan['summary']['noise_labels']} deprioritized label(s)."
+        f"{plan['summary']['noise_labels']} deprioritized label(s), "
+        f"{plan['summary'].get('directional_targets', 0)} directional target(s)."
     )
+    if plan.get("directional_targets"):
+        print("Directional targets:")
+        for item in plan["directional_targets"][: args.limit]:
+            branch = " > ".join(item.get("branch_path", [])) or "(unknown branch)"
+            labels = ", ".join(item.get("labels", [])[:6])
+            print(f"- {branch} ({item['priority']:.2f}/{item['confidence']:.2f}) labels={labels}")
     if plan["prioritized_labels"]:
         print("Top planned labels:")
         for item in plan["prioritized_labels"][: args.limit]:
@@ -394,6 +559,7 @@ def synthesize_profile_tooling(profile, no_page_tools: bool = False, no_action_t
     selector_lookup = {element.id: element.selector_fingerprint for element in snapshot.elements}
     value_lookup = {element.id: str(element.context["read_value"]) for element in snapshot.elements if "read_value" in element.context}
     ai_backend = get_ai_backend()
+    research_session = load_research_session(workspace(), profile)
     description_lookup = {
         mapping.ui_element_id: description
         for mapping in schema.mappings
@@ -409,7 +575,20 @@ def synthesize_profile_tooling(profile, no_page_tools: bool = False, no_action_t
         tools.extend(page_tools)
         bindings.extend(page_bindings)
     if not no_action_tools:
-        write_tools, write_bindings = synthesize_form_tools(profile.id, snapshot, seen_tool_names)
+        form_classifications, _ = classify_forms(workspace(), profile, snapshot, schema.ontology, ai_backend, research_session)
+        if form_classifications:
+            research_session["form_classifications"] = list(form_classifications.values())
+            negative_concepts = sorted(
+                {
+                    concept
+                    for classification in form_classifications.values()
+                    for concept in classification.get("negative_concepts", [])
+                }
+            )
+            if negative_concepts:
+                research_session["negative_concepts"] = negative_concepts
+            write_research_session(workspace(), profile, research_session)
+        write_tools, write_bindings = synthesize_form_tools(profile.id, snapshot, seen_tool_names, form_classifications)
         tools.extend(write_tools)
         bindings.extend(write_bindings)
     return snapshot, tools, bindings
@@ -1061,13 +1240,20 @@ def build_parser(include_completion: bool = True) -> argparse.ArgumentParser:
     run.add_argument("--fixture-html", help="Use a saved HTML file instead of launching Chromium; intended for fixtures and tests.")
     run.add_argument("--fixture-site", help="Crawl a local directory of linked HTML files instead of launching Chromium.")
     run.add_argument("--start-path", default="index.html", help="Start page within --fixture-site.")
-    run.add_argument("--research-product-hint", help="Use AI to collect product documentation before crawling, then feed the resulting ontology into navigation planning.")
+    run.add_argument("--research-product-hint", help="Optionally add product-specific AI documentation research; initial live crawls run AI UI domain discovery before ontology planning.")
+    run.add_argument("--refresh-ai-domain", action="store_true", help="Refresh AI UI domain discovery even when --use-plan can reuse the existing research session.")
     run.add_argument("--max-research-sources", type=int, default=5)
     run.add_argument("--use-plan", help="Use a crawl plan path or 'latest' to prioritize navigation labels.")
     run.add_argument("--max-planned-labels", type=int, help="Limit labels loaded from the crawl plan for a targeted probe.")
     run.add_argument("--probe-budget-seconds", type=int, help="Override max crawl seconds for this run.")
     run.add_argument("--target-depth", type=int, help="Override JS state depth for this run.")
     run.set_defaults(func=cmd_crawl_run)
+    inventory = crawl_sub.add_parser("inventory")
+    inventory.add_argument("--profile", required=True)
+    inventory.add_argument("--max-nodes", type=int)
+    inventory.add_argument("--max-depth", type=int)
+    inventory.add_argument("--budget-seconds", type=int, default=120)
+    inventory.set_defaults(func=cmd_crawl_inventory)
     plan = crawl_sub.add_parser("plan")
     plan.add_argument("--profile", required=True)
     plan.add_argument("--max-terms", type=int, default=20)

@@ -82,6 +82,27 @@ class ProductResearchResult:
     terms: list[dict[str, Any]]
 
 
+@dataclass
+class DirectionalCrawlTarget:
+    branch_path: list[str]
+    labels: list[str]
+    missing_concepts: list[str]
+    reason: str
+    priority: float
+    confidence: float
+
+
+@dataclass
+class FormPurposeClassification:
+    form_id: str
+    semantic_purpose: str
+    operation: str
+    confidence: float
+    evidence_ids: list[str]
+    reasoning_summary: str
+    negative_concepts: list[str]
+
+
 class AiBackend(Protocol):
     def extract_terms(self, doc_snippets: list[dict[str, str]]) -> list[DomainTerm]:
         ...
@@ -115,6 +136,26 @@ class AiBackend(Protocol):
     def research_product_docs(self, product_hint: str, base_url: str | None = None, max_sources: int = 5) -> ProductResearchResult | None:
         ...
 
+    def discover_ui_domain(self, ui_text: str, base_url: str | None = None, max_sources: int = 5) -> ProductResearchResult | None:
+        ...
+
+    def plan_directional_crawl(
+        self,
+        snapshot_summary: dict[str, Any],
+        weak_areas: list[dict[str, Any]],
+        ontology: list[DomainTerm],
+        research_memory: dict[str, Any] | None = None,
+    ) -> list[DirectionalCrawlTarget]:
+        ...
+
+    def classify_form_purpose(
+        self,
+        form_context: dict[str, Any],
+        ontology: list[DomainTerm],
+        research_memory: dict[str, Any] | None = None,
+    ) -> FormPurposeClassification | None:
+        ...
+
 
 class NoopAiBackend:
     def extract_terms(self, doc_snippets: list[dict[str, str]]) -> list[DomainTerm]:
@@ -142,6 +183,26 @@ class NoopAiBackend:
         return []
 
     def research_product_docs(self, product_hint: str, base_url: str | None = None, max_sources: int = 5) -> ProductResearchResult | None:
+        return None
+
+    def discover_ui_domain(self, ui_text: str, base_url: str | None = None, max_sources: int = 5) -> ProductResearchResult | None:
+        return None
+
+    def plan_directional_crawl(
+        self,
+        snapshot_summary: dict[str, Any],
+        weak_areas: list[dict[str, Any]],
+        ontology: list[DomainTerm],
+        research_memory: dict[str, Any] | None = None,
+    ) -> list[DirectionalCrawlTarget]:
+        return []
+
+    def classify_form_purpose(
+        self,
+        form_context: dict[str, Any],
+        ontology: list[DomainTerm],
+        research_memory: dict[str, Any] | None = None,
+    ) -> FormPurposeClassification | None:
         return None
 
 
@@ -267,6 +328,100 @@ class FakeAiBackend(NoopAiBackend):
                 }
             ],
         )
+
+    def discover_ui_domain(self, ui_text: str, base_url: str | None = None, max_sources: int = 5) -> ProductResearchResult | None:
+        product_name = "Example Router Admin UI" if "router" in normalize_term(ui_text) or "wan" in normalize_term(ui_text) else "Example Web Admin UI"
+        return ProductResearchResult(
+            product_name=product_name,
+            sources=[
+                {
+                    "title": f"{product_name} inferred UI domain",
+                    "url": base_url or "https://example.com",
+                    "source_type": "ui_landing_page",
+                    "summary": "Fake backend inferred a router administration domain from the landing page.",
+                    "confidence": 0.85,
+                }
+            ][:max_sources],
+            terms=[
+                {
+                    "canonical_name": "wan status",
+                    "aliases": ["wan state", "internet status"],
+                    "constraints": [],
+                    "units": [],
+                    "source_urls": [base_url or "https://example.com"],
+                    "summary": "WAN status indicates external connectivity.",
+                    "confidence": 0.85,
+                },
+                {
+                    "canonical_name": "port forwarding rule",
+                    "aliases": ["virtual server", "port mapping", "nat rule"],
+                    "constraints": ["high risk write; dry-run and confirmation required"],
+                    "units": [],
+                    "source_urls": [base_url or "https://example.com"],
+                    "summary": "Port forwarding maps external ports to internal hosts.",
+                    "confidence": 0.82,
+                },
+            ],
+        )
+
+    def plan_directional_crawl(
+        self,
+        snapshot_summary: dict[str, Any],
+        weak_areas: list[dict[str, Any]],
+        ontology: list[DomainTerm],
+        research_memory: dict[str, Any] | None = None,
+    ) -> list[DirectionalCrawlTarget]:
+        weak_text = " ".join(item.get("canonical_name", "") for item in weak_areas)
+        if "port forwarding" in normalize_term(weak_text):
+            return [
+                DirectionalCrawlTarget(
+                    branch_path=["Internet", "Security"],
+                    labels=["NAT", "Port Forwarding", "Virtual Server", "Port Binding", "UPnP"],
+                    missing_concepts=["port forwarding"],
+                    reason="Router domain research says port forwarding is usually nested under Internet/Security/NAT-like sections.",
+                    priority=0.95,
+                    confidence=0.85,
+                )
+            ]
+        return []
+
+    def classify_form_purpose(
+        self,
+        form_context: dict[str, Any],
+        ontology: list[DomainTerm],
+        research_memory: dict[str, Any] | None = None,
+    ) -> FormPurposeClassification | None:
+        field_text = normalize_term(" ".join(field.get("label", "") for field in form_context.get("fields", [])))
+        text = normalize_term(
+            " ".join(
+                [
+                    " ".join(form_context.get("page_path", [])),
+                    form_context.get("page_label", ""),
+                    " ".join(field.get("label", "") for field in form_context.get("fields", [])),
+                ]
+            )
+        )
+        if "port binding" in text and {"lan1", "lan2", "lan3", "lan4", "ssid1", "ssid8"} & set(field_text.split()):
+            return FormPurposeClassification(
+                form_id=form_context.get("form_id", ""),
+                semantic_purpose="port binding",
+                operation="update",
+                confidence=0.86,
+                evidence_ids=form_context.get("evidence_ids", []),
+                reasoning_summary="Port Binding page fields reference LAN/SSID/WAN binding, not external/internal TCP/UDP forwarding.",
+                negative_concepts=["port forwarding", "virtual server", "nat rule"],
+            )
+        if "external port" in text or ("internal" in text and "port" in text and "protocol" in text):
+            return FormPurposeClassification(
+                form_id=form_context.get("form_id", ""),
+                semantic_purpose="port forwarding rule",
+                operation="create_or_update",
+                confidence=0.84,
+                evidence_ids=form_context.get("evidence_ids", []),
+                reasoning_summary="Fields indicate protocol and internal/external port mapping.",
+                negative_concepts=[],
+            )
+        return None
 
 
 class OpenAiResponsesBackend(NoopAiBackend):
@@ -629,6 +784,130 @@ class OpenAiResponsesBackend(NoopAiBackend):
             for item in result.get("priorities", [])
         ]
 
+    def plan_directional_crawl(
+        self,
+        snapshot_summary: dict[str, Any],
+        weak_areas: list[dict[str, Any]],
+        ontology: list[DomainTerm],
+        research_memory: dict[str, Any] | None = None,
+    ) -> list[DirectionalCrawlTarget]:
+        if not weak_areas:
+            return []
+        result = self._request_json(
+            instructions=(
+                "You are guiding a browser crawler through a web-admin UI efficiently. "
+                "Use the persistent research memory, observed UI model, and weak/missing ontology concepts to choose targeted branches, "
+                "not a full recrawl. The goal is directional crawling: identify which UI branch should be explored deeper, which labels "
+                "or aliases should be prioritized inside that branch, and why this branch is likely to reduce model uncertainty. "
+                "For router/home-gateway UIs, reason from networking domain terminology and user-guide/forum conventions: NAT, virtual "
+                "server, port forwarding, port mapping, firewall, security, application rules, DMZ, UPnP, WAN/LAN/DHCP/DNS/Wi-Fi. "
+                "Prefer official/vendor docs and standards/Wikipedia-like references over forums; use forums only as lower-confidence usage hints. "
+                "Stop suggesting broad top-level crawls when a narrower branch is plausible. Mark confidence and priority."
+            ),
+            input_text=json.dumps(
+                {
+                    "snapshot_summary": snapshot_summary,
+                    "weak_areas": weak_areas[:40],
+                    "ontology_terms": [
+                        {
+                            "canonical_name": term.canonical_name,
+                            "aliases": term.aliases,
+                            "confidence": term.confidence,
+                        }
+                        for term in ontology[:120]
+                    ],
+                    "research_memory": research_memory or {},
+                },
+                sort_keys=True,
+            ),
+            schema_name="directional_crawl_plan",
+            schema={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "targets": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "branch_path": {"type": "array", "items": {"type": "string"}},
+                                "labels": {"type": "array", "items": {"type": "string"}},
+                                "missing_concepts": {"type": "array", "items": {"type": "string"}},
+                                "reason": {"type": "string"},
+                                "priority": {"type": "number"},
+                                "confidence": {"type": "number"},
+                            },
+                            "required": ["branch_path", "labels", "missing_concepts", "reason", "priority", "confidence"],
+                        },
+                    }
+                },
+                "required": ["targets"],
+            },
+        )
+        return [
+            DirectionalCrawlTarget(
+                branch_path=[str(label) for label in item.get("branch_path", []) if str(label).strip()],
+                labels=[str(label) for label in item.get("labels", []) if str(label).strip()],
+                missing_concepts=[normalize_term(str(label)) for label in item.get("missing_concepts", []) if str(label).strip()],
+                reason=str(item.get("reason", "")),
+                priority=float(item.get("priority", 0.0)),
+                confidence=float(item.get("confidence", 0.0)),
+            )
+            for item in result.get("targets", [])
+        ]
+
+    def classify_form_purpose(
+        self,
+        form_context: dict[str, Any],
+        ontology: list[DomainTerm],
+        research_memory: dict[str, Any] | None = None,
+    ) -> FormPurposeClassification | None:
+        result = self._request_json(
+            instructions=(
+                "Classify the purpose of one discovered web-admin form. Use page path, page label, fields, nearby/domain ontology, "
+                "and research memory. Distinguish similarly named concepts. For router UIs, port binding (binding WAN/LAN/SSID interfaces) "
+                "is not the same as port forwarding/virtual server/NAT rule (mapping external TCP/UDP ports to internal hosts). "
+                "Return negative_concepts for plausible but disproven concepts. If evidence is insufficient, use semantic_purpose='unknown' "
+                "and low confidence. Do not overclaim write intent."
+            ),
+            input_text=json.dumps(
+                {
+                    "form": form_context,
+                    "ontology_terms": [
+                        {"canonical_name": term.canonical_name, "aliases": term.aliases, "confidence": term.confidence}
+                        for term in ontology[:120]
+                    ],
+                    "research_memory": research_memory or {},
+                },
+                sort_keys=True,
+            ),
+            schema_name="form_purpose_classification",
+            schema={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "semantic_purpose": {"type": "string"},
+                    "operation": {"type": "string"},
+                    "confidence": {"type": "number"},
+                    "evidence_ids": {"type": "array", "items": {"type": "string"}},
+                    "reasoning_summary": {"type": "string"},
+                    "negative_concepts": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["semantic_purpose", "operation", "confidence", "evidence_ids", "reasoning_summary", "negative_concepts"],
+            },
+        )
+        valid_ids = set(form_context.get("evidence_ids", []))
+        return FormPurposeClassification(
+            form_id=form_context.get("form_id", ""),
+            semantic_purpose=normalize_term(result.get("semantic_purpose", "unknown")),
+            operation=normalize_term(result.get("operation", "unknown")).replace(" ", "_"),
+            confidence=float(result.get("confidence", 0.0)),
+            evidence_ids=[eid for eid in result.get("evidence_ids", []) if eid in valid_ids] or list(valid_ids),
+            reasoning_summary=result.get("reasoning_summary", ""),
+            negative_concepts=[normalize_term(item) for item in result.get("negative_concepts", [])],
+        )
+
     def research_product_docs(self, product_hint: str, base_url: str | None = None, max_sources: int = 5) -> ProductResearchResult | None:
         result = self._request_json(
             instructions=(
@@ -686,9 +965,73 @@ class OpenAiResponsesBackend(NoopAiBackend):
             terms=result.get("terms", []),
         )
 
+    def discover_ui_domain(self, ui_text: str, base_url: str | None = None, max_sources: int = 5) -> ProductResearchResult | None:
+        result = self._request_json(
+            instructions=(
+                "You are preparing an autonomous crawler to learn a web-admin UI without human steering. "
+                "Infer the product/domain from visible UI text, then research official or highly trusted docs and general domain references. "
+                "Use source quality in this order: official vendor/user guides, standards or Wikipedia-style catalog pages, vendor/ISP support pages, "
+                "then forums as lower-confidence operational hints. Return a comprehensive capability ontology for the kind of UI, including read workflows, "
+                "write workflows, table/list concepts, field concepts, navigation labels, aliases, constraints, units, and high-risk operations. "
+                "For network/router/firewall UIs, include expected capabilities such as WAN, LAN, Wi-Fi, DHCP, DNS, firewall, "
+                "NAT/port forwarding/virtual server, DMZ, UPnP, DDNS, diagnostics, account management, backup/restore, and logs "
+                "when the UI evidence suggests those domains. Do not wait for a user; make best-effort domain inferences and mark confidence."
+            ),
+            input_text=json.dumps({"base_url": base_url, "visible_ui_text": ui_text[:12000], "max_sources": max_sources}, sort_keys=True),
+            schema_name="ui_domain_discovery",
+            schema={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "product_name": {"type": "string"},
+                    "sources": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "title": {"type": "string"},
+                                "url": {"type": "string"},
+                                "source_type": {"type": "string"},
+                                "summary": {"type": "string"},
+                                "confidence": {"type": "number"},
+                            },
+                            "required": ["title", "url", "source_type", "summary", "confidence"],
+                        },
+                    },
+                    "terms": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "canonical_name": {"type": "string"},
+                                "aliases": {"type": "array", "items": {"type": "string"}},
+                                "constraints": {"type": "array", "items": {"type": "string"}},
+                                "units": {"type": "array", "items": {"type": "string"}},
+                                "source_urls": {"type": "array", "items": {"type": "string"}},
+                                "summary": {"type": "string"},
+                                "confidence": {"type": "number"},
+                            },
+                            "required": ["canonical_name", "aliases", "constraints", "units", "source_urls", "summary", "confidence"],
+                        },
+                    },
+                },
+                "required": ["product_name", "sources", "terms"],
+            },
+            tools=[{"type": "web_search"}],
+        )
+        return ProductResearchResult(
+            product_name=result.get("product_name", "Discovered Web Admin UI"),
+            sources=result.get("sources", [])[:max_sources],
+            terms=result.get("terms", []),
+        )
+
 
 def get_ai_backend() -> AiBackend:
     provider = os.environ.get("SITE_AGENT_AI_PROVIDER", "").strip().lower()
+    if not provider and os.environ.get("OPENAI_API_KEY"):
+        provider = "openai"
     if provider in {"", "none", "off", "deterministic"}:
         return NoopAiBackend()
     if provider == "fake":
