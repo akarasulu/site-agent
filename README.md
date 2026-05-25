@@ -20,6 +20,18 @@ site-agent config coverage --profile my-site --settings-repo ../my-site-settings
 site-agent drift check --profile my-site
 ```
 
+That primary workflow is intentionally short:
+
+1. Create or import a profile.
+2. Add authentication and crawl scope.
+3. Gather documentation when the target has manuals, support pages, or guides.
+4. Crawl the UI and extract pages, forms, fields, actions, and dynamic flows.
+5. Review AI-assisted mappings and approve low-confidence items.
+6. Generate the Python API, MCP server, and Ansible collection from the approved model.
+7. Snapshot configuration into a dedicated settings repository when desired.
+8. Build a package containing evidence, schema, generated contracts, reports, and RAG chunks.
+9. Re-run drift and quality checks when the UI changes.
+
 Install browser crawling support with:
 
 ```bash
@@ -36,6 +48,14 @@ Run the dependency-light fixture flow:
 ```bash
 scripts/run-mock-e2e.sh
 ```
+
+Run the fuller generated-output smoke flow:
+
+```bash
+scripts/run-mock-generated-surfaces.sh
+```
+
+That script creates an isolated temporary workspace, crawls the mock app fixture, generates the Python API, MCP package, Ansible collection, configuration snapshot, quality report, and profile knowledge package. It prints the final output paths so you can inspect a complete non-device example without touching a real site.
 
 Run the mock website in Docker:
 
