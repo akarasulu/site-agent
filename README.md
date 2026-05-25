@@ -51,6 +51,16 @@ That creates an isolated venv under `~/.local/share/site-agent/venv` and links `
 site-agent --help
 ```
 
+The installer does not require sudo. It is meant for developer workstations and generated target projects that need a stable `site-agent` command on `PATH`.
+
+Installer options:
+
+```bash
+scripts/install-shell-commands.sh --bin-dir ~/.local/bin
+scripts/install-shell-commands.sh --venv-dir ~/.local/share/site-agent/venv
+scripts/install-shell-commands.sh --no-playwright
+```
+
 ## Mock App Harness
 
 The repository includes an OpsBoard fixture under `profiles/fixtures/mock_app` for fast, product-agnostic iteration.
@@ -225,6 +235,18 @@ site-agent mcp import --profile my-site --target kimi-code
 ```
 
 `json` emits a standard `mcpServers` block for clients that accept MCP JSON. `codex --apply` updates `~/.codex/config.toml` with a marked block that can be safely refreshed. Other AI coding tools can reuse the same command, args, cwd, and env values even when their config wrapper differs.
+
+Useful options:
+
+```bash
+site-agent mcp import --profile my-site --server-name my_site
+site-agent mcp import --profile my-site --project-dir /path/to/target-project
+site-agent mcp import --profile my-site --python /path/to/target-project/.venv/bin/python
+site-agent mcp import --profile my-site --engine-dir /path/to/site-agent
+site-agent mcp import --profile my-site --target codex --config ~/.codex/config.toml --apply
+```
+
+The generated server is currently a local stdio MCP server. Multiple AI coding tools can share the same generated project and command, but each client usually starts its own MCP process. A centralized one-process MCP service would require an HTTP/SSE transport wrapper.
 
 ### Ansible Collection
 

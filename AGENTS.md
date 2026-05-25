@@ -61,6 +61,7 @@ Recommended CLI shape (or equivalent UI actions):
 - `site-agent api build`
 - `site-agent mcp build`
 - `site-agent mcp serve`
+- `site-agent mcp import`
 - `site-agent ansible build`
 - `site-agent config save`
 - `site-agent config coverage`
@@ -76,6 +77,7 @@ UX requirements:
 - Errors must include actionable fixes, not just stack traces.
 - Low-confidence mappings are shown in a review queue.
 - Generated MCP tools include human-readable descriptions and evidence references.
+- Generated MCP packages can emit or install client configuration with a reusable import command instead of target-specific setup instructions.
 - Generated Python API methods include typed arguments, docstrings, constraints, risk metadata, and evidence references.
 - Generated Ansible modules expose idempotent check-mode friendly operations where the model has enough read/write evidence.
 - Configuration snapshots produce deterministic, reviewable files suitable for a small dedicated git repository.
@@ -127,7 +129,17 @@ Expected outcome:
 - Generates MCP tools from approved schema, preferably backed by the generated Python API execution layer.
 - Starts MCP server for agent client connection.
 
-6. Optionally build an Ansible collection.
+6. Emit or install MCP client configuration.
+```bash
+site-agent mcp import --profile my-site --target json
+site-agent mcp import --profile my-site --target codex --apply
+site-agent mcp import --profile my-site --target kimi-code
+```
+Expected outcome:
+- Emits a standard MCP client config block or updates a supported client config.
+- Keeps target setup reusable across Codex, Kimi Code, and other clients that can launch local MCP stdio servers.
+
+7. Optionally build an Ansible collection.
 ```bash
 site-agent ansible build --profile my-site
 ```
@@ -135,7 +147,7 @@ Expected outcome:
 - Generates Ansible modules, module_utils, documentation fragments, and task examples for model-backed read/update operations.
 - Modules support check mode for write-capable operations when the generated Python API supports dry-run.
 
-7. Check drift after UI updates.
+8. Check drift after UI updates.
 ```bash
 site-agent drift check --profile my-site
 ```
@@ -143,7 +155,7 @@ Expected outcome:
 - Reports changes and proposed remaps.
 - Preserves stable tool contracts when semantics are unchanged.
 
-8. Snapshot settings into a dedicated git repository.
+9. Snapshot settings into a dedicated git repository.
 ```bash
 site-agent config save --profile my-site --repo ../my-site-settings --commit --tag v1
 ```
@@ -152,7 +164,7 @@ Expected outcome:
 - Writes deterministic JSON/YAML artifacts into the settings repo.
 - Commits the snapshot with run metadata and evidence references.
 
-9. Compare or restore settings from a branch, tag, or commit.
+10. Compare or restore settings from a branch, tag, or commit.
 ```bash
 site-agent config diff --profile my-site --repo ../my-site-settings --ref v2026-05-25-good
 site-agent config restore-plan --profile my-site --repo ../my-site-settings --ref v2026-05-25-good
@@ -240,6 +252,8 @@ Implement in this layered order.
 - Keep external API stable and readable.
 - Prefer calling the generated Python API rather than duplicating browser/action execution logic.
 - Internally map to selector adapters per profile and version through the Python API/runtime layer.
+- Provide a reusable MCP import/install command that emits standard `mcpServers` JSON and supported client config blocks.
+- Keep target-specific MCP client setup in generated projects as thin wrappers around the reusable import command.
 - Emit metadata for each tool:
   - description in domain language
   - arguments and types
