@@ -73,7 +73,7 @@ def restore_binding_for_element(
     for binding in bindings.get("bindings", []):
         tool_name = binding.get("tool_name")
         tool = tool_by_name.get(tool_name)
-        if not tool or tool.get("source_type") not in {"ui_form", "ui_flow"}:
+        if not tool or tool.get("source_type") not in {"canonical_concept", "ui_form", "ui_flow"}:
             continue
         adapter = binding.get("selector_action_bindings", {})
         tool_evidence = set(tool.get("evidence_ids", []))

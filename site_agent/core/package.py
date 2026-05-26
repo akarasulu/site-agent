@@ -214,8 +214,10 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
     tools_path = root / "mcp" / "tools.json"
     contract_path = root / "mcp" / "contract.json"
     bindings_path = root / "mcp" / "adapter.bindings.json"
+    capabilities_path = root / "capabilities" / "capabilities.json"
     api_dir = root / "api"
     ansible_dir = root / "ansible"
+    explorer_dir = root / "explorer"
     if not tools_path.exists() or not contract_path.exists():
         raise FileNotFoundError(f"MCP artifacts missing for profile '{profile.name}'. Run: site-agent mcp build --profile {profile.name}")
 
@@ -231,6 +233,8 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
     write_json(package_dir / "public" / "mapped-schema.json", schema)
     write_json(package_dir / "public" / "ontology.json", {"ontology": schema.get("ontology", [])})
     write_json(package_dir / "public" / "mcp" / "tools.json", tools)
+    if capabilities_path.exists():
+        copy_json_artifact(capabilities_path, package_dir / "public" / "capabilities.json", profile.crawl.redaction_patterns)
     copied = [
         copy_json_artifact(contract_path, package_dir / "public" / "mcp" / "contract.json", profile.crawl.redaction_patterns),
     ]
@@ -239,6 +243,8 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
         copied.append(copy_json_artifact(api_dir / "evidence.json", package_dir / "public" / "api" / "evidence.json", profile.crawl.redaction_patterns))
     if (ansible_dir / "ansible-spec.json").exists():
         copied.append(copy_json_artifact(ansible_dir / "ansible-spec.json", package_dir / "public" / "ansible" / "ansible-spec.json", profile.crawl.redaction_patterns))
+    if (explorer_dir / "index.html").exists() and (explorer_dir / "explorer-data.json").exists():
+        shutil.copytree(explorer_dir, package_dir / "public" / "explorer")
     identity_candidates = build_identity_candidates(snapshot, profile.crawl.redaction_patterns)
     if include_private:
         copied.append(copy_json_artifact(bindings_path, package_dir / "private" / "adapter.bindings.json", profile.crawl.redaction_patterns))
@@ -302,6 +308,7 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
             "default_redacted": False,
             "do_not_embed": ["private/adapter.bindings.json", "private/profile.json"],
             "review_before_embedding": ["private/identity-candidates.json"] if include_private else [],
+            "visual_review_app": "public/explorer/index.html" if (explorer_dir / "index.html").exists() else None,
             "selector_private": True,
             "secrets_policy": "Auth state is excluded from public packages; other captured values are preserved and must be protected by the operator.",
         },
@@ -319,6 +326,7 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
             "ansible_modules": len(read_json(ansible_dir / "ansible-spec.json").get("modules", [])) if (ansible_dir / "ansible-spec.json").exists() else 0,
             "rag_chunks": len(rag_chunks),
             "reports": len(report_entries),
+            "explorer": 1 if (explorer_dir / "index.html").exists() else 0,
         },
     }
     write_json(package_dir / "manifest.json", manifest)

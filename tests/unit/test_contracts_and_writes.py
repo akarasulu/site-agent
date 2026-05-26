@@ -95,16 +95,16 @@ def test_contract_diff_and_write_tool_dry_run(tmp_path, monkeypatch):
 
     tools = read_json(Path("output/opsboard/mcp/tools.json"))["tools"]
     names = {tool["name"] for tool in tools}
-    assert "save_settings" in names
-    save_settings = next(tool for tool in tools if tool["name"] == "save_settings")
+    assert "settings_update" in names
+    save_settings = next(tool for tool in tools if tool["name"] == "settings_update")
     assert save_settings["args"].get("required", []) == []
     assert Path("output/opsboard/mcp/contract.json").exists()
 
     args = tmp_path / "args.json"
     write_json(args, {"alert_email": "ops@example.test", "maintenance_window": "Sunday 02:00 UTC", "retention_days": "30", "dry_run": True})
-    assert main(["mcp", "call", "--profile", "opsboard", "--tool", "save_settings", "--args-json", str(args)]) == 0
+    assert main(["mcp", "call", "--profile", "opsboard", "--tool", "settings_update", "--args-json", str(args)]) == 0
     write_json(args, {"dry_run": True})
-    assert main(["mcp", "call", "--profile", "opsboard", "--tool", "save_settings", "--args-json", str(args)]) == 0
+    assert main(["mcp", "call", "--profile", "opsboard", "--tool", "settings_update", "--args-json", str(args)]) == 0
 
     baseline = Path("baseline.json")
     write_json(baseline, read_json(Path("output/opsboard/mcp/contract.json")))
@@ -125,7 +125,7 @@ def test_generated_python_api_imports_reads_and_dry_runs_writes(tmp_path, monkey
 
     api_spec = read_json(Path("output/opsboard/api/api-spec.json"))
     assert api_spec["package_name"] == "opsboard_client"
-    assert any(method["name"] == "save_settings" for method in api_spec["methods"])
+    assert any(method["name"] == "settings_update" for method in api_spec["methods"])
     server = read_json(Path("output/opsboard/mcp/server.json"))
     assert server["python_api"]["package_name"] == "opsboard_client"
 
@@ -133,13 +133,13 @@ def test_generated_python_api_imports_reads_and_dry_runs_writes(tmp_path, monkey
     try:
         module = importlib.import_module("opsboard_client")
         client = module.OpsboardClient.from_package_dir(Path("output/opsboard/mcp"))
-        result = client.save_settings(
+        result = client.settings_update(
             alert_email="ops@example.test",
             maintenance_window="Sunday 02:00 UTC",
             retention_days="30",
         )
         assert result["status"] == "dry_run"
-        delegated = call_tool(Path("output/opsboard/mcp"), "save_settings", {"alert_email": "ops@example.test"})
+        delegated = call_tool(Path("output/opsboard/mcp"), "settings_update", {"alert_email": "ops@example.test"})
         assert delegated["execution_surface"] == "python_api"
     finally:
         sys.path = [entry for entry in sys.path if entry != str(Path("output/opsboard/api").resolve())]
@@ -159,11 +159,11 @@ def test_generated_ansible_collection_wraps_python_api(tmp_path, monkeypatch):
 
     spec = read_json(Path("output/opsboard/ansible/ansible-spec.json"))
     assert spec["python_api_dependency"] == "opsboard_client"
-    module_path = Path("output/opsboard/ansible/ansible_collections/site_agent/opsboard/plugins/modules/opsboard_save_settings.py")
+    module_path = Path("output/opsboard/ansible/ansible_collections/site_agent/opsboard/plugins/modules/opsboard_settings_update.py")
     assert module_path.exists()
     source = module_path.read_text(encoding="utf-8")
     assert "load_client" in source
-    assert "client.save_settings" in source
+    assert "client.settings_update" in source
     module_utils = Path("output/opsboard/ansible/ansible_collections/site_agent/opsboard/plugins/module_utils/client.py").read_text(encoding="utf-8")
     assert "from opsboard_client import OpsboardClient" in module_utils
 
@@ -182,14 +182,14 @@ def test_mcp_build_includes_ui_backed_page_and_form_tools_by_default(tmp_path, m
     names = {tool["name"] for tool in tools}
     action_tools = [tool for tool in tools if tool["risk_level"] in {"medium", "high"}]
 
-    assert "save_settings" in names
+    assert "settings_update" in names
     assert action_tools
     assert all(tool["dry_run_supported"] for tool in action_tools)
     assert any(tool["exposure_level"] == "review_required" for tool in action_tools)
 
     args = tmp_path / "args.json"
     write_json(args, {"alert_email": "ops@example.test", "maintenance_window": "Sunday 02:00 UTC", "retention_days": "30", "dry_run": False})
-    assert main(["mcp", "call", "--profile", "opsboard", "--tool", "save_settings", "--args-json", str(args), "--mode", "apply"]) == 2
+    assert main(["mcp", "call", "--profile", "opsboard", "--tool", "settings_update", "--args-json", str(args), "--mode", "apply"]) == 2
 
     html = tmp_path / "status.html"
     html.write_text("<h1>Status</h1><p>WAN Status: Connected</p><p>Software Version: V1</p>", encoding="utf-8")
@@ -198,9 +198,9 @@ def test_mcp_build_includes_ui_backed_page_and_form_tools_by_default(tmp_path, m
     assert main(["schema", "review", "--profile", "statuspage"]) == 0
     assert main(["mcp", "build", "--profile", "statuspage"]) == 0
     status_tools = read_json(Path("output/statuspage/mcp/tools.json"))["tools"]
-    assert any(tool["name"].startswith("get_status") for tool in status_tools)
+    assert any(tool["name"] == "status_get" for tool in status_tools)
     assert all(not tool["name"].startswith("read_") for tool in status_tools)
-    assert any(tool["source_type"] == "ui_page" for tool in status_tools)
+    assert all(tool["source_type"] == "canonical_concept" for tool in status_tools)
     report = read_json(sorted(Path("output/statuspage/reports").glob("contract-quality-*.json"))[-1])
     assert report["passed"]
     assert report["metrics"]["deprecated_read_prefix_tools"] == 0
@@ -225,7 +225,7 @@ def test_canonical_reads_suppress_overlapping_page_read_tools(tmp_path, monkeypa
     assert main(["mcp", "build", "--profile", "statuspage"]) == 0
     tools = read_json(Path("output/statuspage/mcp/tools.json"))["tools"]
     names = {tool["name"] for tool in tools}
-    assert {"get_wan_status", "get_software_version"} <= names
+    assert {"wan_connection_get", "software_version_get"} <= names
     assert all(tool["source_type"] != "ui_page" for tool in tools)
 
 

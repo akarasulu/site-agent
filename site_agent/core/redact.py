@@ -36,6 +36,7 @@ def redact_snapshot(snapshot: CrawlSnapshot, extra_patterns: list[str] | None = 
                 url=redact_text(page.url, extra_patterns),
                 title=redact_text(page.title, extra_patterns),
                 headings=[redact_text(heading, extra_patterns) for heading in page.headings],
+                html_snapshot=redact_text(page.html_snapshot, extra_patterns) if page.html_snapshot else None,
             )
             for page in snapshot.pages
         ],

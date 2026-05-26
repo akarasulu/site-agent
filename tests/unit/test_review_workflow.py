@@ -43,8 +43,8 @@ def test_schema_review_queue_and_edit_approval(tmp_path, monkeypatch):
     assert main(["mcp", "build", "--profile", "demo"]) == 0
 
     tools = read_json(Path("output/demo/mcp/tools.json"))["tools"]
-    assert "get_wan_status" in [tool["name"] for tool in tools]
-    assert "submit_status" in [tool["name"] for tool in tools]
+    assert "wan_connection_get" in [tool["name"] for tool in tools]
+    assert "status_update" in [tool["name"] for tool in tools]
     reviewed = read_json(sorted(Path("output/demo/schema").glob("*reviewed*.json"))[-1])
     assert reviewed["mappings"][0]["status"] == "ready"
     assert any(item["kind"] == "review" for item in reviewed["evidence"])

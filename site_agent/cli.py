@@ -27,11 +27,12 @@ from site_agent.core.config_versioning import (
     verify_restore_snapshot,
     write_config_snapshot,
 )
-from site_agent.core.crawl.playwright import CrawlError, crawl_fixture_site, crawl_html_fixture, crawl_profile, sample_landing_page_text
+from site_agent.core.crawl.playwright import CrawlError, crawl_collect_profile, crawl_fixture_site, crawl_html_fixture, crawl_profile, sample_landing_page_text
 from site_agent.core.debug import build_debug_report
 from site_agent.core.debug import state_path
 from site_agent.core.doctor import doctor_checks, run_playwright_install
 from site_agent.core.drift.check import compare_snapshots
+from site_agent.core.explorer import write_explorer
 from site_agent.core.form_classify import classify_forms
 from site_agent.core.ingest.docs import build_ontology_artifact
 from site_agent.core.inventory import inventory_profile
@@ -47,7 +48,8 @@ from site_agent.core.storage import latest_json, read_json, write_json
 from site_agent.core.synthesize.contracts import contract_from_tools, diff_contracts, write_contract
 from site_agent.core.synthesize.ansible import write_ansible_collection
 from site_agent.core.synthesize.api import write_api_package
-from site_agent.core.synthesize.mcp import apply_tool_aliases, synthesize_form_tools, synthesize_tools, synthesize_unmapped_page_tools, write_mcp_package
+from site_agent.core.synthesize.capabilities import synthesize_capabilities
+from site_agent.core.synthesize.mcp import synthesize_form_tools, synthesize_tools, synthesize_unmapped_page_tools, write_mcp_package
 from site_agent.core.synthesize.mcp_import import build_mcp_import_spec, install_codex_config, marked_block, render_codex_toml, render_mcp_json
 from site_agent.core.synthesize.runtime import RuntimeErrorForTool, call_tool, serve_json_lines
 
@@ -73,6 +75,80 @@ def snapshot_from_json(raw: dict) -> CrawlSnapshot:
 def load_latest_snapshot(profile_name: str) -> CrawlSnapshot:
     path = latest_json(output_root(workspace(), profile_name) / "crawl", "snapshot-*.json")
     return snapshot_from_json(read_json(path))
+
+
+def latest_complete_collection_snapshot(profile_name: str) -> CrawlSnapshot | None:
+    root = output_root(workspace(), profile_name)
+    reports = sorted((root / "reports").glob("collection-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for report_path in reports:
+        try:
+            report = read_json(report_path)
+        except Exception:
+            continue
+        if not report.get("complete"):
+            continue
+        run_id = report.get("run_id")
+        if not run_id:
+            continue
+        snapshot_path = root / "crawl" / f"snapshot-{run_id}.json"
+        if snapshot_path.exists():
+            return snapshot_from_json(read_json(snapshot_path))
+    return None
+
+
+def load_synthesis_snapshot(profile_name: str) -> CrawlSnapshot:
+    complete_collection = latest_complete_collection_snapshot(profile_name)
+    if complete_collection is not None:
+        return complete_collection
+
+    crawl_dir = output_root(workspace(), profile_name) / "crawl"
+    paths = sorted(crawl_dir.glob("snapshot-*.json"), key=lambda p: p.stat().st_mtime)
+    snapshots: list[CrawlSnapshot] = []
+    for path in paths:
+        try:
+            snapshots.append(snapshot_from_json(read_json(path)))
+        except Exception:
+            continue
+    if not snapshots:
+        return load_latest_snapshot(profile_name)
+    if len(snapshots) == 1:
+        return snapshots[0]
+
+    pages_by_signature: dict[tuple[str, tuple[str, ...]], Page] = {}
+    forms_by_id: dict[str, Form] = {}
+    elements_by_id: dict[str, UiElement] = {}
+    transitions_by_key: dict[tuple[str, str, str], Transition] = {}
+    flows_by_id: dict[str, InteractionFlow] = {}
+    evidence_by_id: dict[str, Evidence] = {}
+    for snapshot in snapshots:
+        for page in snapshot.pages:
+            signature = (page.url, tuple(page.headings))
+            existing = pages_by_signature.get(signature)
+            if existing is None or (page.html_snapshot and not existing.html_snapshot):
+                pages_by_signature[signature] = page
+        for form in snapshot.forms:
+            forms_by_id.setdefault(form.id, form)
+        for element in snapshot.elements:
+            elements_by_id.setdefault(element.id, element)
+        for transition in snapshot.transitions:
+            transitions_by_key.setdefault((transition.source_page_id, transition.target_url, transition.trigger_label), transition)
+        for flow in snapshot.interaction_flows:
+            flows_by_id.setdefault(flow.id, flow)
+        for evidence in snapshot.evidence:
+            evidence_by_id.setdefault(evidence.id, evidence)
+
+    latest = snapshots[-1]
+    return CrawlSnapshot(
+        timestamp=latest.timestamp,
+        profile_id=latest.profile_id,
+        run_id=f"aggregate_{latest.run_id}",
+        pages=list(pages_by_signature.values()),
+        forms=list(forms_by_id.values()),
+        elements=list(elements_by_id.values()),
+        transitions=list(transitions_by_key.values()),
+        interaction_flows=list(flows_by_id.values()),
+        evidence=list(evidence_by_id.values()),
+    )
 
 
 def load_snapshot_path(path: Path) -> CrawlSnapshot:
@@ -318,6 +394,48 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_crawl_collect(args: argparse.Namespace) -> int:
+    profile = load_profile(workspace(), args.profile)
+    if args.probe_budget_seconds is not None:
+        profile.crawl.max_crawl_seconds = args.probe_budget_seconds
+    if args.target_depth is not None:
+        profile.crawl.max_js_depth = args.target_depth
+    if args.max_states is not None:
+        profile.crawl.max_js_states = args.max_states
+    snapshot, collection_report = crawl_collect_profile(
+        workspace(),
+        profile,
+        args.url,
+        crawl_progress_printer(args.max_states),
+        args.max_states,
+    )
+    snapshot = redact_snapshot(snapshot, profile.crawl.redaction_patterns)
+    path = output_root(workspace(), profile.name) / "crawl" / f"snapshot-{snapshot.run_id}.json"
+    write_json(path, snapshot)
+    report_path = output_root(workspace(), profile.name) / "reports" / f"collection-{snapshot.run_id}.json"
+    write_json(report_path, collection_report)
+    captured_html = sum(1 for page in snapshot.pages if page.html_snapshot)
+    print(f"Saved fast collection snapshot: {path}")
+    print(f"Saved exhaustive collection report: {report_path}")
+    print(
+        f"Collected {len(snapshot.pages)} page state(s), {len(snapshot.forms)} form(s), "
+        f"{len(snapshot.elements)} UI element(s), {captured_html} visual HTML snapshot(s)."
+    )
+    print(
+        "Coverage: "
+        f"complete={collection_report.get('complete', False)}; "
+        f"visited_paths={collection_report.get('visited_count', 0)}; "
+        f"queued_remaining={collection_report.get('queued_remaining_count', 0)}; "
+        f"failed_paths={collection_report.get('failed_count', 0)}; "
+        f"duplicates={collection_report.get('duplicate_count', 0)}."
+    )
+    if not collection_report.get("complete", False) and not args.allow_incomplete:
+        print("Exhaustive collection did not complete; rerun with more budget/depth/states or pass --allow-incomplete for exploratory output.", file=sys.stderr)
+        return 1
+    print(f"Next: site-agent schema review --profile {profile.name}; site-agent mcp build --profile {profile.name}; site-agent explorer serve --profile {profile.name}")
+    return 0
+
+
 def cmd_crawl_inventory(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
     ontology, doc_evidence = build_ontology_artifact(workspace(), profile, NoopAiBackend())
@@ -555,7 +673,7 @@ def cmd_schema_decide(args: argparse.Namespace) -> int:
 
 def synthesize_profile_tooling(profile, no_page_tools: bool = False, no_action_tools: bool = False):
     _, schema = latest_schema(output_root(workspace(), profile.name) / "schema")
-    snapshot = load_latest_snapshot(profile.name)
+    snapshot = load_synthesis_snapshot(profile.name)
     selector_lookup = {element.id: element.selector_fingerprint for element in snapshot.elements}
     value_lookup = {element.id: str(element.context["read_value"]) for element in snapshot.elements if "read_value" in element.context}
     ai_backend = get_ai_backend()
@@ -594,10 +712,28 @@ def synthesize_profile_tooling(profile, no_page_tools: bool = False, no_action_t
     return snapshot, tools, bindings
 
 
+def synthesize_profile_capabilities(profile, no_page_tools: bool = False, no_action_tools: bool = False):
+    snapshot, adapter_tools, adapter_bindings = synthesize_profile_tooling(profile, no_page_tools, no_action_tools)
+    tools, bindings, report = synthesize_capabilities(adapter_tools, adapter_bindings, snapshot)
+    capabilities_path = output_root(workspace(), profile.name) / "capabilities" / "capabilities.json"
+    write_json(
+        capabilities_path,
+        {
+            "profile_id": profile.id,
+            "profile_name": profile.name,
+            "run_id": snapshot.run_id,
+            "capabilities": tools,
+            "projection_report": report,
+        },
+    )
+    path = output_root(workspace(), profile.name) / "reports" / f"capabilities-{snapshot.run_id}.json"
+    write_json(path, report)
+    return snapshot, tools, bindings, report, path
+
+
 def cmd_mcp_build(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
-    snapshot, tools, bindings = synthesize_profile_tooling(profile, args.no_page_tools, args.no_action_tools)
-    applied_aliases = apply_tool_aliases(tools, profile.tool_aliases)
+    snapshot, tools, bindings, capability_report, capability_report_path = synthesize_profile_capabilities(profile, args.no_page_tools, args.no_action_tools)
     write_mcp_package(workspace(), profile.name, tools, bindings, profile.base_url if args.include_writes else None)
     if (output_root(workspace(), profile.name) / "api" / "api-spec.json").exists():
         write_api_package(workspace(), profile.name, [tool.__dict__ if hasattr(tool, "__dict__") else tool for tool in tools])
@@ -606,9 +742,10 @@ def cmd_mcp_build(args: argparse.Namespace) -> int:
     contract_report_path = output_root(workspace(), profile.name) / "reports" / f"contract-quality-{snapshot.run_id}.json"
     write_json(contract_report_path, contract_report)
     print(f"Generated MCP package: {output_root(workspace(), profile.name) / 'mcp'}")
-    print(f"Exposed {len(tools)} tool(s). Selector bindings are adapter metadata, not public API.")
-    if applied_aliases:
-        print(f"Applied {len(applied_aliases)} compatibility alias(es).")
+    print(f"Exposed {len(tools)} semantic capability tool(s). Raw adapters are not public API.")
+    print(f"Saved capability report: {capability_report_path}")
+    if capability_report["quality"]["numbered_public_names"] or capability_report["quality"]["generic_public_names"]:
+        print("Capability quality failures detected.")
     print(f"Saved contract quality report: {contract_report_path}")
     if contract_report["warnings"]:
         print(f"Contract warnings: {len(contract_report['warnings'])}")
@@ -623,7 +760,7 @@ def cmd_api_build(args: argparse.Namespace) -> int:
     package_dir = output_root(workspace(), profile.name) / "mcp"
     tools_path = package_dir / "tools.json"
     if not tools_path.exists():
-        _, tools, bindings = synthesize_profile_tooling(profile, args.no_page_tools, args.no_action_tools)
+        _, tools, bindings, _, _ = synthesize_profile_capabilities(profile, args.no_page_tools, args.no_action_tools)
         write_mcp_package(workspace(), profile.name, tools, bindings, profile.base_url)
         write_contract(output_root(workspace(), profile.name) / "mcp")
     api_dir, spec = write_api_package(workspace(), profile.name, read_json(tools_path).get("tools", []))
@@ -1163,6 +1300,61 @@ def cmd_package_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_explorer_build(args: argparse.Namespace) -> int:
+    profile = load_profile(workspace(), args.profile)
+    snapshot = load_synthesis_snapshot(profile.name)
+    explorer_dir, data = write_explorer(workspace(), profile, snapshot)
+    print(f"Built semantic API explorer: {explorer_dir / 'index.html'}")
+    print(
+        "Explorer contents: "
+        f"{data['summary']['methods']} method(s), "
+        f"{data['summary']['groups']} semantic group(s), "
+        f"{data['summary']['pages']} page(s), "
+        f"{data['summary']['forms']} form(s)."
+    )
+    return 0
+
+
+def cmd_explorer_serve(args: argparse.Namespace) -> int:
+    import functools
+    import socket
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    profile = load_profile(workspace(), args.profile)
+    snapshot = load_synthesis_snapshot(profile.name)
+    explorer_dir, data = write_explorer(workspace(), profile, snapshot)
+    port = args.port
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            try:
+                probe.bind((args.host, port))
+                break
+            except OSError:
+                if not args.auto_port:
+                    raise
+                port += 1
+    handler = functools.partial(SimpleHTTPRequestHandler, directory=str(explorer_dir))
+    server = ThreadingHTTPServer((args.host, port), handler)
+    url_host = "127.0.0.1" if args.host in {"0.0.0.0", ""} else args.host
+    print(f"Serving semantic API explorer: http://{url_host}:{port}/", flush=True)
+    print(
+        "Explorer contents: "
+        f"{data['summary']['methods']} method(s), "
+        f"{data['summary']['groups']} semantic group(s), "
+        f"{data['summary']['pages']} page(s), "
+        f"{data['summary']['forms']} form(s).",
+        flush=True,
+    )
+    print("Press Ctrl-C to stop.", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        server.server_close()
+    return 0
+
+
 def cmd_completion_script(args: argparse.Namespace) -> int:
     scripts = {
         "bash": bash_script,
@@ -1251,6 +1443,14 @@ def build_parser(include_completion: bool = True) -> argparse.ArgumentParser:
     run.add_argument("--probe-budget-seconds", type=int, help="Override max crawl seconds for this run.")
     run.add_argument("--target-depth", type=int, help="Override JS state depth for this run.")
     run.set_defaults(func=cmd_crawl_run)
+    collect = crawl_sub.add_parser("collect", help="Fast rendered-HTML collection pass for offline analysis and visual explorer review.")
+    collect.add_argument("--profile", required=True)
+    collect.add_argument("--url")
+    collect.add_argument("--probe-budget-seconds", type=int, default=600)
+    collect.add_argument("--target-depth", type=int, default=8)
+    collect.add_argument("--max-states", type=int, default=500)
+    collect.add_argument("--allow-incomplete", action="store_true", help="Write the capture artifacts even when queued or failed paths remain.")
+    collect.set_defaults(func=cmd_crawl_collect)
     inventory = crawl_sub.add_parser("inventory")
     inventory.add_argument("--profile", required=True)
     inventory.add_argument("--max-nodes", type=int)
@@ -1354,6 +1554,18 @@ def build_parser(include_completion: bool = True) -> argparse.ArgumentParser:
     ansible_build = ansible_sub.add_parser("build")
     ansible_build.add_argument("--profile", required=True)
     ansible_build.set_defaults(func=cmd_ansible_build)
+
+    explorer = sub.add_parser("explorer")
+    explorer_sub = explorer.add_subparsers(dest="explorer_command", required=True)
+    explorer_build = explorer_sub.add_parser("build")
+    explorer_build.add_argument("--profile", required=True)
+    explorer_build.set_defaults(func=cmd_explorer_build)
+    explorer_serve = explorer_sub.add_parser("serve")
+    explorer_serve.add_argument("--profile", required=True)
+    explorer_serve.add_argument("--host", default="127.0.0.1")
+    explorer_serve.add_argument("--port", type=int, default=8765)
+    explorer_serve.add_argument("--auto-port", action="store_true", default=True, help="Use the next available port if the requested port is busy.")
+    explorer_serve.set_defaults(func=cmd_explorer_serve)
 
     drift = sub.add_parser("drift")
     drift_sub = drift.add_subparsers(dest="drift_command", required=True)

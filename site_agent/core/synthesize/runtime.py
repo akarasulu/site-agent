@@ -239,6 +239,8 @@ def call_tool(
     if adapter.get("action") == "read_page":
         return {
             "values": adapter.get("values", {}),
+            "headings": adapter.get("headings", []),
+            "page_url": adapter.get("page_url"),
             "evidence_ids": tool.get("evidence_ids", []),
             "confidence": tool.get("confidence"),
             "risk_level": tool.get("risk_level", "low"),

@@ -74,6 +74,7 @@ class Page:
     url: str
     title: str = ""
     headings: list[str] = field(default_factory=list)
+    html_snapshot: str | None = None
 
 
 @dataclass

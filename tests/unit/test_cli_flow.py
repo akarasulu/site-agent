@@ -18,8 +18,8 @@ def test_cli_fixture_flow(tmp_path, monkeypatch):
     assert main(["mcp", "build", "--profile", "demo"]) == 0
 
     tools = read_json(Path("output/demo/mcp/tools.json"))["tools"]
-    assert tools[0]["name"] == "get_ssid"
-    assert "selector_fingerprint" not in tools[0]
+    assert {tool["name"] for tool in tools} == {"home_overview_get", "settings_update", "ssid_get"}
+    assert all("selector_fingerprint" not in tool for tool in tools)
 
 
 def test_fixture_site_crawl_prints_progress(tmp_path, monkeypatch, capsys):

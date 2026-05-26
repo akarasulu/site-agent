@@ -59,8 +59,9 @@ def test_fake_ai_backend_aligns_evidence_backed_alias_and_describes_tool(tmp_pat
     assert "AI backend matched" in mapping["reasoning_summary"]
 
     assert main(["mcp", "build", "--profile", "demo"]) == 0
-    tool = read_json(Path("output/demo/mcp/tools.json"))["tools"][0]
-    assert tool["description"] == "Read wan status from the approved evidence-backed schema."
+    tool = next(tool for tool in read_json(Path("output/demo/mcp/tools.json"))["tools"] if tool["name"] == "wan_connection_get")
+    assert tool["name"] == "wan_connection_get"
+    assert tool["description"] == "Read wan connection get."
 
     assert main(["ai", "analyze", "--profile", "demo", "--max-elements", "5"]) == 0
     report = read_json(Path("output/demo/reports/ai-analysis-" + schema["run_id"] + ".json"))

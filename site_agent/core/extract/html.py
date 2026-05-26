@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from html.parser import HTMLParser
 from urllib.parse import urljoin
 
@@ -9,6 +10,37 @@ from site_agent.core.models import Evidence, Form, Page, Transition, UiElement, 
 
 FIELD_TAGS = {"input", "select", "textarea", "button"}
 HEADING_TAGS = {"h1", "h2", "h3"}
+MAX_VISUAL_HTML_CHARS = 350_000
+
+
+def sanitize_visual_html(html: str) -> str:
+    clean = re.sub(r"<script\b[^>]*>.*?</script>", "", html, flags=re.IGNORECASE | re.DOTALL)
+    clean = re.sub(r"<iframe\b[^>]*>.*?</iframe>", "", clean, flags=re.IGNORECASE | re.DOTALL)
+    clean = re.sub(r"\s+on[a-z]+\s*=\s*(['\"]).*?\1", "", clean, flags=re.IGNORECASE | re.DOTALL)
+    clean = re.sub(r"\s+on[a-z]+\s*=\s*[^\s>]+", "", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"<form\b", "<form data-site-agent-form=\"true\"", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"<input\b", "<input data-site-agent-control=\"true\"", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"<select\b", "<select data-site-agent-control=\"true\"", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"<textarea\b", "<textarea data-site-agent-control=\"true\"", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"<button\b", "<button data-site-agent-control=\"true\"", clean, flags=re.IGNORECASE)
+    if "</head>" in clean.lower():
+        clean = re.sub(
+            r"</head>",
+            """
+            <style>
+            * { pointer-events: none !important; }
+            body { min-height: 100vh; }
+            form[data-site-agent-form="true"] { outline: 2px solid rgba(209, 166, 80, .85); outline-offset: 2px; }
+            [data-site-agent-control="true"] { outline: 2px solid rgba(18, 103, 177, .75); outline-offset: 1px; }
+            </style></head>
+            """,
+            clean,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+    if len(clean) > MAX_VISUAL_HTML_CHARS:
+        clean = clean[:MAX_VISUAL_HTML_CHARS] + "\n<!-- truncated by site-agent visual snapshot -->"
+    return clean
 
 
 def fingerprint(tag: str, attrs: dict[str, str], label: str) -> str:
@@ -93,8 +125,8 @@ class InteractionHTMLParser(HTMLParser):
             if stripped:
                 self._text_stack[-1].append(stripped)
 
-    def page(self) -> Page:
-        return Page(id=self._page_id, url=self.url, title=self.title, headings=self.headings)
+    def page(self, html_snapshot: str | None = None) -> Page:
+        return Page(id=self._page_id, url=self.url, title=self.title, headings=self.headings, html_snapshot=html_snapshot)
 
     def _pop_text(self, tag: str) -> str:
         text_parts = self._text_stack.pop() if self._text_stack else []
@@ -175,7 +207,7 @@ class InteractionHTMLParser(HTMLParser):
 def extract_interactions(html: str, url: str, include_readonly_facts: bool = False) -> tuple[Page, list[Form], list[UiElement], list[Transition], list[Evidence]]:
     parser = InteractionHTMLParser(url)
     parser.feed(html)
-    page = parser.page()
+    page = parser.page(sanitize_visual_html(html))
     if include_readonly_facts:
         _add_readonly_facts(parser, html, page.id)
     return page, parser.forms, parser.elements, parser.transitions, parser.evidence

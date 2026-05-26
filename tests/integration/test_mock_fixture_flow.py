@@ -36,9 +36,9 @@ def test_mock_fixture_site_discovers_common_admin_flows(tmp_path, monkeypatch):
 
     tools = read_json(Path("output/opsboard/mcp/tools.json"))["tools"]
     tool_names = {tool["name"] for tool in tools}
-    assert "get_email_address" in tool_names
-    assert "get_incident_status" in tool_names
-    assert "get_export_format" in tool_names
+    assert "email_address_get" in tool_names
+    assert "incident_status_get" in tool_names
+    assert "export_format_get" in tool_names
 
 
 def free_port() -> int:

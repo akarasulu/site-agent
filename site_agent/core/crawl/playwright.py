@@ -337,9 +337,13 @@ def extract_browser_facts(snapshot: CrawlSnapshot, page, page_id: str, url: str)
 
 
 def discover_navigation_labels(page, profile: Profile) -> list[str]:
+    return [item["label"] for item in discover_navigation_items(page, profile)]
+
+
+def discover_navigation_items(page, profile: Profile) -> list[dict[str, Any]]:
     deny_patterns = safe_click_patterns(profile)
     try:
-        labels = page.locator(CLICKABLE_SELECTOR).evaluate_all(
+        items = page.locator(CLICKABLE_SELECTOR).evaluate_all(
             """
             els => els
               .filter(el => {
@@ -353,23 +357,92 @@ def discover_navigation_labels(page, profile: Profile) -> list[str]:
                 if (tag === 'button' || tag === 'input' || type === 'submit' || type === 'button') return false;
                 return true;
               })
-              .map(el => (el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim())
-              .filter(Boolean)
+              .map(el => {
+                const rect = el.getBoundingClientRect();
+                const label = (el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
+                return {label, rect: {x: rect.x, y: rect.y, width: rect.width, height: rect.height}};
+              })
+              .filter(item => item.label)
               .slice(0, 300)
             """
         )
     except Exception:
-        labels = []
-    clean_labels = []
+        items = []
+    clean_items: list[dict[str, Any]] = []
     seen = set()
-    for label in labels:
-        for part in str(label).splitlines():
+    for item in items:
+        label = str(item.get("label") or "")
+        for part in label.splitlines():
             clean = " ".join(part.split()).strip()
             key = normalize_term(clean)
             if key not in seen and is_safe_navigation_label(clean, deny_patterns):
-                clean_labels.append(clean)
+                clean_items.append({"label": clean, "rect": item.get("rect") or {}})
                 seen.add(key)
-    return clean_labels
+    return clean_items
+
+
+def discover_primary_navigation_labels(page, profile: Profile) -> list[str]:
+    items = discover_navigation_items(page, profile)
+    bands: dict[int, list[dict[str, Any]]] = {}
+    for item in items:
+        rect = item.get("rect") or {}
+        try:
+            y = float(rect.get("y", 0))
+            width = float(rect.get("width", 0))
+        except (TypeError, ValueError):
+            continue
+        if width < 40:
+            continue
+        bands.setdefault(int(y // 24), []).append(item)
+    for band in sorted(bands):
+        band_items = sorted(bands[band], key=lambda item: (item.get("rect") or {}).get("x", 0))
+        labels = [str(item.get("label") or "").strip() for item in band_items]
+        labels = [label for label in labels if label]
+        if len(labels) >= 3:
+            return labels
+    return [item["label"] for item in items]
+
+
+def discover_navigation_label_groups(items: list[dict[str, Any]]) -> dict[str, set[str]]:
+    groups_by_label: dict[str, set[str]] = {}
+    x_bands: dict[int, list[dict[str, Any]]] = {}
+    y_bands: dict[int, list[dict[str, Any]]] = {}
+    for item in items:
+        rect = item.get("rect") or {}
+        try:
+            x = float(rect.get("x", 0))
+            y = float(rect.get("y", 0))
+            width = float(rect.get("width", 0))
+            height = float(rect.get("height", 0))
+        except (TypeError, ValueError):
+            continue
+        if width <= 0 or height <= 0:
+            continue
+        x_bands.setdefault(int(x // 32), []).append({**item, "x": x, "y": y})
+        y_bands.setdefault(int(y // 24), []).append({**item, "x": x, "y": y})
+
+    def add_group(group_id: str, group_items: list[dict[str, Any]]) -> None:
+        for grouped_item in group_items:
+            label = normalize_term(str(grouped_item.get("label") or ""))
+            if label:
+                groups_by_label.setdefault(label, set()).add(group_id)
+
+    for band, band_items in x_bands.items():
+        if len(band_items) < 3:
+            continue
+        y_values = [float(item["y"]) for item in band_items]
+        if max(y_values) - min(y_values) < 72:
+            continue
+        add_group(f"x:{band}", band_items)
+
+    for band, band_items in y_bands.items():
+        if len(band_items) < 3:
+            continue
+        x_values = [float(item["x"]) for item in band_items]
+        if max(x_values) - min(x_values) < 72:
+            continue
+        add_group(f"y:{band}", band_items)
+    return groups_by_label
 
 
 def best_navigation_label(label: str, visible_labels: list[str]) -> str:
@@ -388,12 +461,14 @@ def best_navigation_label(label: str, visible_labels: list[str]) -> str:
         score = len(shared) / len(visible_tokens)
         if visible_key in label_key or label_key in visible_key:
             score += 0.5
-        if shared and any(token in {"forwarding", "forward", "firewall", "filter", "criteria", "dmz", "upnp", "security"} for token in shared):
-            score += 0.2
         if score > best_score:
             best_label = visible_label
             best_score = score
-    return best_label if best_score >= 0.65 else label
+    if best_score >= 0.65:
+        return best_label
+    if best_score >= 0.5 and any(len(token) >= 5 for token in (label_tokens & {part for part in normalize_term(best_label).split() if len(part) > 2})):
+        return best_label
+    return label
 
 
 def resolve_visible_navigation_label(page, label: str, profile: Profile) -> str:
@@ -615,8 +690,13 @@ def capture_browser_forms(snapshot: CrawlSnapshot, page, page_id: str, state_url
               return forms.map((form, formIndex) => {
                 const controls = Array.from(form.querySelectorAll('input,select,textarea,button'))
                   .map((el, controlIndex) => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
                     const tag = el.tagName.toLowerCase();
                     const type = (el.getAttribute('type') || tag).toLowerCase();
+                    const visible = type === 'hidden'
+                      ? false
+                      : rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
                     return {
                       index: controlIndex,
                       tag,
@@ -625,8 +705,10 @@ def capture_browser_forms(snapshot: CrawlSnapshot, page, page_id: str, state_url
                       type,
                       label: fallbackLabel(el),
                       value: el.value || el.getAttribute('value') || '',
+                      visible,
                     };
-                  });
+                  })
+                  .filter(control => control.visible);
                 const textLines = clean(form.innerText || form.textContent || '').split(/\\s{2,}|\\n/).filter(Boolean);
                 return {
                   index: formIndex,
@@ -635,7 +717,7 @@ def capture_browser_forms(snapshot: CrawlSnapshot, page, page_id: str, state_url
                   label: clean(form.getAttribute('aria-label') || form.getAttribute('name') || textLines[0] || 'browser form'),
                   controls,
                 };
-              }).filter(form => form.controls.some(control => !['button', 'submit'].includes(control.type)));
+              }).filter(form => form.controls.some(control => !['button', 'submit', 'hidden'].includes(control.type)));
             }
             """
         )
@@ -792,7 +874,7 @@ def crawl_js_state_graph(
     progress_offset: int = 0,
 ) -> list:
     transitions = []
-    root_labels = discover_navigation_labels(page, profile)
+    root_labels = discover_primary_navigation_labels(page, profile)
     root_label_keys = {normalize_term(label) for label in root_labels}
     labels, ai_calls_remaining = rank_navigation_labels(
         root_labels,
@@ -992,6 +1074,206 @@ def crawl_profile(
         raise CrawlError(f"Crawl failed for {target_url}. Check authentication, allowlist, and browser install. Details: {exc}") from exc
 
     return snapshot
+
+
+def collect_js_state_corpus(
+    snapshot: CrawlSnapshot,
+    page,
+    profile: Profile,
+    base_url: str,
+    root_page_id: str,
+    deadline: float | None = None,
+    progress: CrawlProgress | None = None,
+    progress_total: int | None = None,
+) -> tuple[list[Transition], dict[str, Any]]:
+    transitions: list[Transition] = []
+    deny_patterns = safe_click_patterns(profile)
+    root_labels = discover_primary_navigation_labels(page, profile)
+    root_label_keys = {normalize_term(label) for label in root_labels}
+    queue: list[tuple[str, ...]] = []
+    seen_queued: set[tuple[str, ...]] = set()
+    for label in root_labels:
+        clean = " ".join(str(label).split()).strip()
+        key = (normalize_term(clean),)
+        if clean and key not in seen_queued and is_safe_navigation_label(clean, deny_patterns):
+            queue.append((clean,))
+            seen_queued.add(key)
+
+    visited: set[tuple[str, ...]] = set()
+    failed_paths: list[list[str]] = []
+    duplicate_paths: list[list[str]] = []
+    page_ids_by_path: dict[tuple[str, ...], str] = {(): root_page_id}
+    seen_state_hashes: set[str] = set()
+    stopped_by_deadline = False
+    stopped_by_state_limit = False
+    while queue:
+        if deadline and time.monotonic() >= deadline:
+            stopped_by_deadline = True
+            break
+        if len(visited) >= profile.crawl.max_js_states:
+            stopped_by_state_limit = True
+            break
+        path = queue.pop(0)
+        normalized_path = tuple(normalize_term(item) for item in path)
+        if normalized_path in visited:
+            continue
+        if not replay_navigation_path(page, base_url, path, profile):
+            failed_paths.append(list(path))
+            continue
+        visited.add(normalized_path)
+        state_url = append_state_path_url(page.url or base_url, path)
+        try:
+            body_text = page.locator("body").inner_text(timeout=3000)
+        except Exception:
+            body_text = page.content()
+        state_hash = state_text_hash(f"{page.url}\n{body_text}")
+        if state_hash in seen_state_hashes:
+            duplicate_paths.append(list(path))
+            emit_progress(
+                progress,
+                snapshot,
+                phase="collect-duplicate",
+                current=" > ".join(path),
+                scanned=len(visited),
+                total=progress_total,
+            )
+        seen_state_hashes.add(state_hash)
+        state_page_id, state_transitions = record_html_state(snapshot, page.content(), state_url)
+        page_ids_by_path[path] = state_page_id
+        extract_browser_facts(snapshot, page, state_page_id, state_url)
+        capture_browser_forms(snapshot, page, state_page_id, state_url)
+        transitions.extend(state_transitions)
+        transitions.append(
+            Transition(
+                source_page_id=page_ids_by_path.get(path[:-1], root_page_id),
+                target_url=state_url,
+                trigger_label=path[-1],
+                risk_level="low",
+            )
+        )
+        emit_progress(
+            progress,
+            snapshot,
+            phase="collect",
+            current=" > ".join(path),
+            scanned=len(visited),
+            total=progress_total,
+        )
+        if len(path) >= profile.crawl.max_js_depth:
+            continue
+        child_paths: list[tuple[str, ...]] = []
+        nav_items = discover_navigation_items(page, profile)
+        label_groups = discover_navigation_label_groups(nav_items)
+        for item in nav_items:
+            label = str(item.get("label") or "")
+            clean = " ".join(str(label).split()).strip()
+            if not clean or not is_safe_navigation_label(clean, deny_patterns):
+                continue
+            clean_key = normalize_term(clean)
+            if clean_key in root_label_keys:
+                next_path = (clean,)
+            else:
+                replacement_index = None
+                clean_groups = label_groups.get(clean_key, set())
+                if any(group.startswith("x:") for group in clean_groups) and len(path) >= 2:
+                    replacement_index = 1
+                elif any(group.startswith("y:") for group in clean_groups) and len(path) >= 3:
+                    replacement_index = 2
+                else:
+                    for index in range(len(path) - 1, -1, -1):
+                        path_key = normalize_term(path[index])
+                        if path_key != clean_key and clean_groups & label_groups.get(path_key, set()):
+                            replacement_index = index
+                            break
+                if replacement_index is not None:
+                    next_path = (*path[:replacement_index], clean)
+                else:
+                    if not path_revisit_allowed(path, clean, profile):
+                        continue
+                    next_path = (*path, clean)
+            next_key = tuple(normalize_term(item) for item in next_path)
+            if next_key not in visited and next_key not in seen_queued:
+                child_paths.append(next_path)
+                seen_queued.add(next_key)
+        queue = child_paths + queue
+    report = {
+        "complete": not queue and not failed_paths and not stopped_by_deadline and not stopped_by_state_limit,
+        "visited_paths": [list(path) for path in sorted(visited)],
+        "visited_count": len(visited),
+        "queued_remaining": [list(path) for path in queue],
+        "queued_remaining_count": len(queue),
+        "failed_paths": failed_paths,
+        "failed_count": len(failed_paths),
+        "duplicate_paths": duplicate_paths,
+        "duplicate_count": len(duplicate_paths),
+        "stopped_by_deadline": stopped_by_deadline,
+        "stopped_by_state_limit": stopped_by_state_limit,
+        "max_states": profile.crawl.max_js_states,
+    }
+    return transitions, report
+
+
+def crawl_collect_profile(
+    workspace: Path,
+    profile: Profile,
+    start_url: str | None = None,
+    progress: CrawlProgress | None = None,
+    progress_total: int | None = None,
+) -> tuple[CrawlSnapshot, dict[str, Any]]:
+    target_url = start_url or profile.base_url
+    validate_url_allowed(profile, target_url)
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise CrawlError(
+            "Playwright is required for browser crawling. Install it with: "
+            "pip install -e '.[crawl]' && playwright install chromium"
+        ) from exc
+
+    run_id = new_id("run")
+    snapshot = CrawlSnapshot(timestamp=utc_now(), profile_id=profile.id, run_id=run_id)
+    auth_state = profile_root(workspace, profile.name) / profile.auth.storage_state_path
+    storage_state = str(auth_state) if auth_state.exists() else None
+    deadline = time.monotonic() + profile.crawl.max_crawl_seconds if profile.crawl.max_crawl_seconds > 0 else None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context_kwargs = {"ignore_https_errors": profile.crawl.ignore_https_errors}
+            if storage_state:
+                context_kwargs["storage_state"] = storage_state
+            context = browser.new_context(**context_kwargs)
+            page = context.new_page()
+            page.goto(target_url, wait_until="networkidle")
+            page_id, transitions = record_html_state(snapshot, page.content(), page.url)
+            extract_browser_facts(snapshot, page, page_id, page.url)
+            capture_browser_forms(snapshot, page, page_id, page.url)
+            emit_progress(progress, snapshot, phase="collect", current=page.url, scanned=1, total=progress_total)
+            collected_transitions, report = collect_js_state_corpus(
+                snapshot=snapshot,
+                page=page,
+                profile=profile,
+                base_url=page.url,
+                root_page_id=page_id,
+                deadline=deadline,
+                progress=progress,
+                progress_total=progress_total,
+            )
+            transitions.extend(collected_transitions)
+            snapshot.transitions.extend(transitions)
+            context.close()
+            browser.close()
+    except Exception as exc:
+        raise CrawlError(f"Fast collection failed for {target_url}. Check authentication, allowlist, and browser install. Details: {exc}") from exc
+    report.update(
+        {
+            "run_id": snapshot.run_id,
+            "pages": len(snapshot.pages),
+            "forms": len(snapshot.forms),
+            "elements": len(snapshot.elements),
+            "visual_html_snapshots": sum(1 for page in snapshot.pages if page.html_snapshot),
+        }
+    )
+    return snapshot, report
 
 
 def sample_landing_page_text(workspace: Path, profile: Profile, start_url: str | None = None, max_chars: int = 12000) -> str:
