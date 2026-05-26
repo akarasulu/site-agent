@@ -58,6 +58,7 @@ class Profile:
     risk: RiskPolicy = field(default_factory=RiskPolicy)
     ontology_seed_path: str = "ontology.seed.json"
     docs_path: str = "docs"
+    tool_aliases: dict[str, str] = field(default_factory=dict)
 
     @property
     def directory_name(self) -> str:
@@ -109,6 +110,7 @@ def load_profile(workspace: Path, name: str) -> Profile:
         risk=RiskPolicy(**raw.get("risk", {})),
         ontology_seed_path=raw.get("ontology_seed_path", "ontology.seed.json"),
         docs_path=raw.get("docs_path", "docs"),
+        tool_aliases=dict(raw.get("tool_aliases", {})),
     )
 
 

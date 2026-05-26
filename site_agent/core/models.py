@@ -158,6 +158,7 @@ class ToolSpec:
     exposure_level: Literal["ready_public", "review_required", "internal_disabled"] = "ready_public"
     source_type: Literal["canonical_concept", "ui_page", "ui_form", "ui_flow"] = "canonical_concept"
     reasoning_summary: str = ""
+    compatibility_aliases: list[str] = field(default_factory=list)
 
 
 @dataclass

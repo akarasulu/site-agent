@@ -79,6 +79,35 @@ def test_runtime_returns_value_from_private_adapter_binding(tmp_path):
     assert responses[1]["result"]["tools"][0]["name"] == "get_wan_status"
 
 
+def test_runtime_resolves_compatibility_aliases(tmp_path):
+    snapshot = CrawlSnapshot(
+        timestamp=utc_now(),
+        profile_id="profile_1",
+        run_id="run_1",
+        elements=[
+            UiElement(
+                id="ui_1",
+                page_id="page_1",
+                selector_fingerprint="abc",
+                label="WAN Connection",
+                control_type="readonly_status",
+                context={"read_value": "Connected"},
+                evidence_ids=["ev_ui"],
+            )
+        ],
+        evidence=[Evidence(id="ev_ui", kind="ui", source="fixture", summary="WAN Connection: Connected")],
+    )
+    ontology = [DomainTerm(id="term_wan_connection", canonical_name="wan connection", aliases=["WAN Connection"], sources=["ev_doc"], confidence=0.9)]
+    schema = align_snapshot("profile_1", snapshot, ontology, [Evidence(id="ev_doc", kind="doc", source="manual", summary="WAN connection docs")])
+    tools, bindings = synthesize_tools("profile_1", schema, {"ui_1": "abc"}, {"ui_1": "Connected"})
+    tools[0].compatibility_aliases.append("get_wan_status")
+    write_mcp_package(tmp_path, "demo", tools, bindings)
+    package_dir = tmp_path / "output" / "demo" / "mcp"
+
+    assert call_tool(package_dir, "get_wan_connection")["value"] == "Connected"
+    assert call_tool(package_dir, "get_wan_status")["value"] == "Connected"
+
+
 def test_mcp_import_emits_json_and_installs_codex_block(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert main(["profile", "init", "--name", "demo-site", "--base-url", "https://demo.test"]) == 0

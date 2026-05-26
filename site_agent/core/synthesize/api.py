@@ -31,21 +31,42 @@ def api_package_name(profile_name: str) -> str:
 
 def api_methods_from_tools(tools: list[dict[str, Any]]) -> list[PythonApiMethod]:
     methods = []
+    seen_methods: set[str] = set()
     for tool in tools:
         if tool.get("exposure_level") == "internal_disabled":
             continue
+        tool_name = str(tool.get("name", ""))
+        method = method_name(tool_name)
+        seen_methods.add(method)
         methods.append(
             PythonApiMethod(
-                name=method_name(str(tool.get("name", ""))),
+                name=method,
                 description=str(tool.get("description", "")),
                 args=tool.get("args", {}),
                 return_schema=tool.get("return_schema", {}),
                 risk_level=tool.get("risk_level", "low"),
                 dry_run_supported=bool(tool.get("dry_run_supported", True)),
                 evidence_ids=list(tool.get("evidence_ids", [])),
-                backing_tool=str(tool.get("name", "")),
+                backing_tool=tool_name,
             )
         )
+        for alias in tool.get("compatibility_aliases", []) or []:
+            alias_method = method_name(str(alias))
+            if alias_method in seen_methods:
+                continue
+            seen_methods.add(alias_method)
+            methods.append(
+                PythonApiMethod(
+                    name=alias_method,
+                    description=f"Compatibility alias for {tool_name}. {tool.get('description', '')}",
+                    args=tool.get("args", {}),
+                    return_schema=tool.get("return_schema", {}),
+                    risk_level=tool.get("risk_level", "low"),
+                    dry_run_supported=bool(tool.get("dry_run_supported", True)),
+                    evidence_ids=list(tool.get("evidence_ids", [])),
+                    backing_tool=str(alias),
+                )
+            )
     return methods
 
 

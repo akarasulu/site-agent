@@ -229,7 +229,10 @@ def call_tool(
     tool_by_name = {tool["name"]: tool for tool in tools}
     binding_by_name = {binding["tool_name"]: binding for binding in bindings}
     if tool_name not in tool_by_name:
-        raise RuntimeErrorForTool(f"Unknown tool: {tool_name}")
+        target_name = alias_lookup(tools).get(tool_name)
+        if not target_name:
+            raise RuntimeErrorForTool(f"Unknown tool: {tool_name}")
+        tool_name = target_name
     tool = tool_by_name[tool_name]
     binding = binding_by_name.get(tool_name, {})
     adapter = binding.get("selector_action_bindings", {})
@@ -327,6 +330,19 @@ def mcp_tool_schema(tool: dict[str, Any]) -> dict[str, Any]:
         "description": tool["description"],
         "inputSchema": tool["args"],
     }
+
+
+def alias_lookup(tools: list[dict[str, Any]]) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    public_names = {tool.get("name") for tool in tools}
+    for tool in tools:
+        target = tool.get("name")
+        if not target:
+            continue
+        for alias in tool.get("compatibility_aliases", []) or []:
+            if alias and alias not in public_names:
+                lookup[str(alias)] = str(target)
+    return lookup
 
 
 def handle_request(package_dir: Path, request: dict[str, Any]) -> dict[str, Any] | None:

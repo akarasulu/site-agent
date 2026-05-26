@@ -47,7 +47,7 @@ from site_agent.core.storage import latest_json, read_json, write_json
 from site_agent.core.synthesize.contracts import contract_from_tools, diff_contracts, write_contract
 from site_agent.core.synthesize.ansible import write_ansible_collection
 from site_agent.core.synthesize.api import write_api_package
-from site_agent.core.synthesize.mcp import synthesize_form_tools, synthesize_tools, synthesize_unmapped_page_tools, write_mcp_package
+from site_agent.core.synthesize.mcp import apply_tool_aliases, synthesize_form_tools, synthesize_tools, synthesize_unmapped_page_tools, write_mcp_package
 from site_agent.core.synthesize.mcp_import import build_mcp_import_spec, install_codex_config, marked_block, render_codex_toml, render_mcp_json
 from site_agent.core.synthesize.runtime import RuntimeErrorForTool, call_tool, serve_json_lines
 
@@ -597,6 +597,7 @@ def synthesize_profile_tooling(profile, no_page_tools: bool = False, no_action_t
 def cmd_mcp_build(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
     snapshot, tools, bindings = synthesize_profile_tooling(profile, args.no_page_tools, args.no_action_tools)
+    applied_aliases = apply_tool_aliases(tools, profile.tool_aliases)
     write_mcp_package(workspace(), profile.name, tools, bindings, profile.base_url if args.include_writes else None)
     if (output_root(workspace(), profile.name) / "api" / "api-spec.json").exists():
         write_api_package(workspace(), profile.name, [tool.__dict__ if hasattr(tool, "__dict__") else tool for tool in tools])
@@ -606,6 +607,8 @@ def cmd_mcp_build(args: argparse.Namespace) -> int:
     write_json(contract_report_path, contract_report)
     print(f"Generated MCP package: {output_root(workspace(), profile.name) / 'mcp'}")
     print(f"Exposed {len(tools)} tool(s). Selector bindings are adapter metadata, not public API.")
+    if applied_aliases:
+        print(f"Applied {len(applied_aliases)} compatibility alias(es).")
     print(f"Saved contract quality report: {contract_report_path}")
     if contract_report["warnings"]:
         print(f"Contract warnings: {len(contract_report['warnings'])}")

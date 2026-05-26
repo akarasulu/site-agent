@@ -182,6 +182,25 @@ def synthesize_tools(
     return tools, bindings
 
 
+def apply_tool_aliases(tools: list[ToolSpec], aliases: dict[str, str]) -> list[str]:
+    """Attach profile-declared compatibility aliases to their target tools."""
+    if not aliases:
+        return []
+    by_name = {tool.name: tool for tool in tools}
+    applied: list[str] = []
+    public_names = set(by_name)
+    for alias, target in sorted(aliases.items()):
+        alias = alias.strip()
+        target = target.strip()
+        if not alias or not target or alias in public_names or target not in by_name:
+            continue
+        target_tool = by_name[target]
+        if alias not in target_tool.compatibility_aliases:
+            target_tool.compatibility_aliases.append(alias)
+            applied.append(alias)
+    return applied
+
+
 def readable_page_label(url: str, title: str, headings: list[str]) -> str:
     if headings:
         return headings[0]
