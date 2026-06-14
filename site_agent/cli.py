@@ -27,6 +27,7 @@ from site_agent.core.config_versioning import (
     verify_restore_snapshot,
     write_config_snapshot,
 )
+from site_agent.core.crawl.crawl4ai_backend import crawl_profile_with_crawl4ai
 from site_agent.core.crawl.playwright import CrawlError, crawl_collect_profile, crawl_fixture_site, crawl_html_fixture, crawl_profile, sample_landing_page_text
 from site_agent.core.debug import build_debug_report
 from site_agent.core.debug import state_path
@@ -262,6 +263,8 @@ def cmd_auth_setup(args: argparse.Namespace) -> int:
 
 def cmd_crawl_run(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
+    if args.backend:
+        profile.crawl.browser_backend = args.backend
     crawl_plan = None
     planned_labels: list[str] = []
     planned_paths: list[list[str]] = []
@@ -356,18 +359,29 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
             print(f"Crawl progress estimate: using previous/plan total of {progress_total} state(s).")
         else:
             print("Crawl progress estimate: first pass has unknown total; showing discovered counts.")
-        snapshot = crawl_profile(
-            workspace(),
-            profile,
-            args.url,
-            ontology,
-            ai_backend,
-            planned_labels,
-            planned_paths,
-            deprioritized_labels,
-            crawl_progress_printer(progress_total),
-            progress_total,
-        )
+        if profile.crawl.browser_backend == "crawl4ai":
+            snapshot = crawl_profile_with_crawl4ai(
+                workspace(),
+                profile,
+                args.url,
+                crawl_progress_printer(progress_total),
+                progress_total,
+            )
+        elif profile.crawl.browser_backend == "playwright":
+            snapshot = crawl_profile(
+                workspace(),
+                profile,
+                args.url,
+                ontology,
+                ai_backend,
+                planned_labels,
+                planned_paths,
+                deprioritized_labels,
+                crawl_progress_printer(progress_total),
+                progress_total,
+            )
+        else:
+            raise ValueError("crawl backend must be one of: playwright, crawl4ai")
     snapshot = redact_snapshot(snapshot, profile.crawl.redaction_patterns)
     path = output_root(workspace(), profile.name) / "crawl" / f"snapshot-{snapshot.run_id}.json"
     write_json(path, snapshot)
@@ -1442,6 +1456,7 @@ def build_parser(include_completion: bool = True) -> argparse.ArgumentParser:
     run.add_argument("--max-planned-labels", type=int, help="Limit labels loaded from the crawl plan for a targeted probe.")
     run.add_argument("--probe-budget-seconds", type=int, help="Override max crawl seconds for this run.")
     run.add_argument("--target-depth", type=int, help="Override JS state depth for this run.")
+    run.add_argument("--backend", choices=["playwright", "crawl4ai"], help="Browser crawl backend for live crawls. Defaults to the profile crawl policy.")
     run.set_defaults(func=cmd_crawl_run)
     collect = crawl_sub.add_parser("collect", help="Fast rendered-HTML collection pass for offline analysis and visual explorer review.")
     collect.add_argument("--profile", required=True)

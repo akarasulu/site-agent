@@ -55,6 +55,22 @@ site-agent install browsers
 site-agent doctor
 ```
 
+The `crawl` extra installs the default Playwright runtime and the pinned
+Crawl4AI backend. Crawl4AI is optional at runtime and is selected explicitly for
+live crawls:
+
+```bash
+site-agent crawl run --profile my-site --backend crawl4ai
+```
+
+Use the default `playwright` backend when you need `site-agent`'s deeper
+JS-state probing and dynamic form-flow inspection. Use `crawl4ai` for a
+rendered HTML collection pass that benefits from Crawl4AI's session-aware
+browser orchestration while still preserving `site-agent`'s canonical evidence,
+schema, API, MCP, and Ansible contracts. Crawl4AI 0.8.9 currently works best on
+Python 3.11-3.13; if `site-agent doctor` reports native dependency failures on a
+newer interpreter, create the project venv with a supported Python version.
+
 Install the shell command for the current user with:
 
 ```bash

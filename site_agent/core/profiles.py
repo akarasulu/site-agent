@@ -22,6 +22,7 @@ class AuthConfig:
 class CrawlPolicy:
     max_pages: int = 50
     read_only: bool = True
+    browser_backend: str = "playwright"
     allow_subdomains: bool = False
     ignore_https_errors: bool = False
     max_crawl_seconds: int = 300

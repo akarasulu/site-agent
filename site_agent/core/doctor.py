@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib.metadata
 import shutil
 import subprocess
 import sys
@@ -55,5 +56,25 @@ def doctor_checks(include_playwright: bool = True) -> list[CheckResult]:
                         "Run: site-agent install browsers",
                     )
                 )
+        crawl4ai_ok = has_module("crawl4ai")
+        crawl4ai_detail = "missing"
+        if crawl4ai_ok:
+            try:
+                crawl4ai_detail = importlib.metadata.version("crawl4ai")
+            except importlib.metadata.PackageNotFoundError:
+                crawl4ai_detail = "installed"
+        crawl4ai_fix = "Install with: pipx install 'site-agent[crawl]' or pip install -e '.[crawl]'."
+        if sys.version_info >= (3, 14):
+            crawl4ai_fix = (
+                "Use Python 3.11-3.13 for Crawl4AI today, then run: "
+                "python -m venv .venv && .venv/bin/python -m pip install -e '.[crawl]'."
+            )
+        results.append(
+            CheckResult(
+                "crawl4ai package",
+                crawl4ai_ok,
+                crawl4ai_detail,
+                None if crawl4ai_ok else crawl4ai_fix,
+            )
+        )
     return results
-
