@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "site-agent"
-version = "1.1.7"
+version = "1.1.8"
 description = "Generic, evidence-backed website interaction mapper and MCP generator."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -47,5 +47,6 @@ branch = true
 source = ["site_agent"]
 
 [tool.coverage.report]
+fail_under = 80
 show_missing = true
 skip_covered = true

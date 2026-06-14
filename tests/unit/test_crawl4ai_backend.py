@@ -1,8 +1,16 @@
+import asyncio
+import builtins
+import sys
+import types
+
 import pytest
 
 from site_agent.cli import build_parser
 from site_agent.core.crawl.crawl4ai_backend import (
     Crawl4AiPage,
+    crawl4ai_fetch_pages,
+    crawl4ai_import_error,
+    crawl4ai_run_config,
     crawl_profile_with_crawl4ai,
     record_crawl4ai_page,
     result_to_page,
@@ -136,3 +144,94 @@ def test_crawl_run_accepts_crawl4ai_backend_argument():
     args = parser.parse_args(["crawl", "run", "--profile", "demo", "--backend", "crawl4ai"])
 
     assert args.backend == "crawl4ai"
+
+
+def test_crawl4ai_import_error_and_run_config_failure(monkeypatch):
+    real_import = builtins.__import__
+
+    def blocked_import(name, *args, **kwargs):
+        if name == "crawl4ai":
+            raise ImportError("missing crawl4ai")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+
+    assert crawl4ai_import_error() == "missing crawl4ai"
+    with pytest.raises(CrawlError, match="Crawl4AI is required"):
+        crawl4ai_run_config(make_profile())
+
+
+def test_crawl4ai_fetch_pages_uses_fake_async_crawler_and_session_state(monkeypatch, tmp_path):
+    profile = make_profile()
+    profile.crawl.max_pages = 2
+    profile.crawl.max_crawl_seconds = 3
+    profile.crawl.navigation_wait_ms = 250
+    profile.crawl.ignore_https_errors = True
+    auth_state = tmp_path / "profiles" / profile.name / profile.auth.storage_state_path
+    auth_state.parent.mkdir(parents=True)
+    auth_state.write_text("{}", encoding="utf-8")
+
+    class CacheMode:
+        BYPASS = "bypass"
+
+    class CrawlerRunConfig:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class BrowserConfig:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class FakeCrawler:
+        instances = []
+
+        def __init__(self, *, config, base_directory):
+            self.config = config
+            self.base_directory = base_directory
+            self.requests = []
+            FakeCrawler.instances.append(self)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def arun(self, *, url, config):
+            self.requests.append((url, config))
+            if url.endswith("/settings"):
+                return FakeResult(success=True, url=url, cleaned_html="<title>Settings</title><h1>Settings</h1>", links={})
+            return FakeResult(
+                success=True,
+                url=url,
+                html="<title>Home</title><h1>Home</h1>",
+                links={
+                    "internal": [
+                        {"href": "/settings", "text": "Settings"},
+                        {"href": "/settings", "text": "Settings"},
+                        {"href": "https://evil.test/logout", "text": "Offsite"},
+                    ]
+                },
+            )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "crawl4ai",
+        types.SimpleNamespace(
+            AsyncWebCrawler=FakeCrawler,
+            BrowserConfig=BrowserConfig,
+            CacheMode=CacheMode,
+            CrawlerRunConfig=CrawlerRunConfig,
+        ),
+    )
+
+    pages = asyncio.run(crawl4ai_fetch_pages(tmp_path, profile, profile.base_url))
+
+    crawler = FakeCrawler.instances[0]
+    assert [page.url for page in pages] == ["https://example.com", "https://example.com/settings"]
+    assert crawler.base_directory.endswith("output/demo/runtime/crawl4ai")
+    assert crawler.config.ignore_https_errors is True
+    assert crawler.config.storage_state == str(auth_state)
+    assert crawler.requests[0][1].cache_mode == "bypass"
+    assert crawler.requests[0][1].page_timeout == 10_000
+    assert crawler.requests[0][1].delay_before_return_html == 0.25

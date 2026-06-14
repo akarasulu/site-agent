@@ -1,13 +1,20 @@
 from site_agent.core.models import AdapterBinding, CrawlSnapshot, Evidence, Page, ToolSpec, UiElement, utc_now
 from site_agent.core.synthesize.capabilities import (
     canonical_page_name,
+    choose_better,
     normalize_args_schema,
     normalize_binding_args,
     page_capabilities,
+    page_description,
+    provenance_missing_read_adapter,
     semantic_context_name,
+    semantic_arg_name,
     semantic_read_name,
     semantic_write_name,
     shaped_args_schema,
+    state_path,
+    strip_numbered_suffix,
+    suspicious_semantic_name,
     synthesize_capabilities,
 )
 
@@ -73,6 +80,54 @@ def test_canonical_page_names_cover_common_router_sections():
     assert [canonical_page_name(url, headings) for url, headings, _ in cases] == [expected for _, _, expected in cases]
 
 
+def test_capability_naming_matrix_covers_router_sections_and_helper_edges():
+    page_cases = [
+        ("https://example.test", ["Software Version"], "home_system_status_get"),
+        ("https://example.test/#state=status", ["Call Log"], "voip_status_get"),
+        ("https://example.test/#state=management", ["User Account"], "management_accounts_get"),
+        ("https://example.test/#state=management", ["MAC Table"], "management_mac_table_get"),
+        ("https://example.test/#state=management", ["Network Diagnosis Ping"], "management_network_diagnostics_get"),
+        ("https://example.test/#state=management", ["Factory Reset"], "management_system_get"),
+        ("https://example.test/#state=internet/security", ["Filter Criteria"], "security_filtering_get"),
+        ("https://example.test/#state=internet/security", ["DMZ"], "security_dmz_get"),
+        ("https://example.test/#state=internet/security", ["Firewall"], "security_firewall_get"),
+        ("https://example.test/#state=internet", ["Parental Controls"], "internet_parental_controls_get"),
+        ("https://example.test/#state=internet", ["DDNS"], "internet_ddns_get"),
+        ("https://example.test/#state=internet", ["SNTP"], "internet_sntp_get"),
+        ("https://example.test/#state=internet/port-binding", [], "internet_port_binding_get"),
+        ("https://example.test/#state=internet/3g-4g", [], "internet_mobile_network_get"),
+        ("https://example.test/#state=internet", ["DSLite"], "internet_dslite_get"),
+        ("https://example.test/#state=internet", ["6RD"], "internet_6rd_get"),
+        ("https://example.test/#state=internet/status", ["Ethernet"], "internet_status_get"),
+        ("https://example.test/#state=local-network/status", ["LAN Status"], "local_network_status_get"),
+        ("https://example.test/#state=wifi", ["Access Control"], "wifi_access_control_get"),
+        ("https://example.test/#state=wifi", ["WLAN Radar"], "wifi_radar_get"),
+        ("https://example.test/#state=lan/dhcp", ["DHCP"], "local_network_lan_get"),
+        ("https://example.test/#state=ftp", ["FTP"], "local_network_ftp_get"),
+        ("https://example.test/#state=dns", ["Domain Name"], "local_network_dns_get"),
+        ("https://example.test/#state=dms", ["DMS"], "local_network_dms_get"),
+        ("https://example.test/#state=upnp", ["UPnP"], "local_network_upnp_get"),
+        ("https://example.test/#state=lan", [], "local_network_status_get"),
+        ("https://example.test/#state=internet", [], "internet_status_get"),
+    ]
+
+    assert [canonical_page_name(url, headings) for url, headings, _ in page_cases] == [expected for _, _, expected in page_cases]
+    assert state_path("https://example.test/#state=internet/security&tab=rules") == ["internet", "security"]
+    assert strip_numbered_suffix("name_1_2") == "name"
+    assert page_description("security_firewall_get", ["Firewall", "Level"]) == "Read security firewall: Firewall, Level."
+    assert suspicious_semantic_name(None)
+    assert suspicious_semantic_name("home_get")
+    assert provenance_missing_read_adapter({"action": "read"})
+    assert not provenance_missing_read_adapter({"action": "read", "page_url": "https://example.test"})
+
+    base = make_tool("get_status", confidence=0.7)
+    assert choose_better(base, make_tool("get_status_new", confidence=0.8))
+    assert choose_better(make_tool("get_status", source_type="ui_page"), make_tool("get_status", source_type="canonical_concept"))
+    richer = make_tool("get_status", confidence=0.8)
+    richer.evidence_ids.append("ev_more")
+    assert choose_better(make_tool("get_status", confidence=0.8), richer)
+
+
 def test_semantic_name_helpers_map_read_write_and_context_labels():
     assert semantic_read_name(make_tool("get_wan_status", "WAN status")) == "wan_connection_get"
     assert semantic_read_name(make_tool("get_software_version", "Software Version")) == "software_version_get"
@@ -85,6 +140,79 @@ def test_semantic_name_helpers_map_read_write_and_context_labels():
     assert semantic_context_name(make_tool("read_form"), make_binding("read_form", page_label="User Account Management"), False) == "management_accounts_get"
     assert semantic_context_name(make_tool("submit_form"), make_binding("submit_form", page_label="NTP server Time Zone"), True) == "internet_sntp_update"
     assert semantic_context_name(make_tool("submit_form"), make_binding("submit_form", page_label="DMZ LAN host"), True) == "security_dmz_update"
+
+
+def test_semantic_name_helpers_cover_read_write_context_matrix():
+    read_cases = [
+        (make_tool("get_mobile_network", "Mobile network"), "internet_mobile_network_get"),
+        (make_tool("get_dslite", "DSLite"), "internet_dslite_get"),
+        (make_tool("get_6rd", "6RD"), "internet_6rd_get"),
+        (make_tool("get_access_control", "Access control"), "wifi_access_control_get"),
+        (make_tool("get_port_forwarding", "Port Forwarding"), "security_port_forwarding_list"),
+        (make_tool("get_dhcp", "Allocated address DHCP"), "lan_dhcp_get"),
+        (make_tool("get_devices", "Access devices"), None),
+        (make_tool("get_wlan", "WLAN status"), "wifi_radios_get"),
+        (make_tool("get_ssid", "SSID Name"), "wifi_ssids_get"),
+        (make_tool("get_channel", "WLAN Channel"), "wifi_channel_get"),
+        (make_tool("get_encryption", "Encryption Type"), "wifi_security_get"),
+        (make_tool("get_power", "Transmitting Power"), "wifi_radio_power_get"),
+        (make_tool("get_upnp", "UPnP"), "local_network_upnp_get"),
+        (make_tool("get_port_binding", "Port Binding"), "internet_port_binding_get"),
+        (make_tool("get_custom_metric", "Custom Metric"), "custom_metric_get"),
+        (make_tool("get_ip_address", "IP Address"), None),
+    ]
+    write_cases = [
+        (make_tool("submit_access", "Access control"), "wifi_access_control_update"),
+        (make_tool("submit_binding", "Port binding"), "internet_port_binding_update"),
+        (make_tool("submit_firewall", "Firewall"), "security_firewall_update"),
+        (make_tool("submit_mode", "Mode"), "security_filtering_update"),
+        (make_tool("submit_wan", "WAN Connection"), "internet_wan_update"),
+        (make_tool("submit_dhcp", "Lease time DHCP"), "lan_dhcp_update"),
+        (make_tool("submit_ip_address", "IP Address"), "lan_dhcp_reservation_update"),
+        (make_tool("submit_wlan_on_off", "WLAN on off"), "wifi_radios_update"),
+        (make_tool("submit_ssid", "SSID WPA Passphrase"), "wifi_ssid_update"),
+        (make_tool("submit_channel", "WLAN Channel"), "wifi_radio_update"),
+        (make_tool("submit_upnp", "UPnP"), "local_network_upnp_update"),
+        (make_tool("submit_devices", "Access devices"), None),
+        (make_tool("submit_url", "URL"), "security_url_filter_update"),
+        (make_tool("apply_filters", "Apply filters"), "incident_filters_apply"),
+        (make_tool("send_invite", "Send invite"), "users_invite_send"),
+        (make_tool("export_report", "Export report"), "reports_export"),
+        (make_tool("sign_in", "Sign in"), "session_sign_in"),
+        (make_tool("create_item", "Create item"), "create_item"),
+        (make_tool("submit_clean", "Clean"), "clean_update"),
+        (make_tool("submit_name_2", "Name"), None),
+    ]
+    context_cases = [
+        (make_tool("read"), make_binding("read", page_label="Idle Timeout"), False, "management_idle_timeout_get"),
+        (make_tool("read"), make_binding("read", page_label="Network Diagnosis"), False, "management_network_diagnostics_get"),
+        (make_tool("read"), make_binding("read", page_label="MAC Table"), False, "management_mac_table_get"),
+        (make_tool("read"), make_binding("read", page_label="Device Information"), False, "management_device_information_get"),
+        (make_tool("read"), make_binding("read", page_label="Topology Access Devices"), False, "topology_devices_get"),
+        (make_tool("read"), make_binding("read", page_label="VOIP Status"), False, "voip_status_get"),
+        (make_tool("read"), make_binding("read", page_label="Local Network"), False, "local_network_status_get"),
+        (make_tool("submit"), make_binding("submit", page_label="Old Password Confirmed Password"), True, "management_account_update"),
+        (make_tool("submit"), make_binding("submit", page_label="Access Control"), True, "wifi_access_control_update"),
+        (make_tool("submit"), make_binding("submit", page_label="Maximum Hops Egress"), True, "management_network_diagnostics_run"),
+        (make_tool("submit"), make_binding("submit", page_label="Provider URL Domain Information Hash"), True, "internet_ddns_update"),
+        (make_tool("submit"), make_binding("submit", page_label="Media Source"), True, "local_network_dms_update"),
+        (make_tool("submit"), make_binding("submit", fields=[], page_label="Prefix Delegate LAN IPv6"), True, "local_network_dhcpv6_update"),
+        (make_tool("submit"), make_binding("submit", fields=[], page_label="Show Password SSID Name"), True, "wifi_ssid_update"),
+    ]
+
+    assert [semantic_read_name(tool) for tool, _ in read_cases] == [expected for _, expected in read_cases]
+    assert [semantic_write_name(tool) for tool, _ in write_cases] == [expected for _, expected in write_cases]
+    assert [semantic_context_name(tool, binding, is_write) for tool, binding, is_write, _ in context_cases] == [
+        expected for _, _, _, expected in context_cases
+    ]
+    assert semantic_arg_name("security_port_forwarding_create_or_update", "Protocol_2", "Protocol") == "protocol"
+    assert semantic_arg_name("security_port_forwarding_create_or_update", "Lan_Host_Port_3", "LAN host port") == "lan_port"
+    assert semantic_arg_name("security_port_forwarding_create_or_update", "Wan_Port_4", "WAN port") == "wan_port"
+    assert semantic_arg_name("security_port_forwarding_create_or_update", "lan_host", "LAN host") == "lan_host"
+    assert semantic_arg_name("security_port_forwarding_create_or_update", "wan_host", "WAN host") == "wan_host"
+    assert semantic_arg_name("security_port_forwarding_create_or_update", "On", "Enable") == "enabled"
+    assert semantic_arg_name("security_port_forwarding_create_or_update", "StopFormAutoSubmit", "Stop") is None
+    assert semantic_arg_name("custom_update", "confirmok", "Confirm") is None
 
 
 def test_shaped_arg_schemas_exist_for_common_write_capabilities():
