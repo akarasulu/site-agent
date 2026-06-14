@@ -5,6 +5,9 @@ dist/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
 output/
 settings-repos/
 profiles/*/auth/

@@ -107,6 +107,12 @@ For one-off use:
 source <(site-agent completion bash)
 ```
 
+Run the unit suite with branch coverage:
+
+```bash
+python -m pytest -q --cov=site_agent --cov-branch --cov-report=term-missing:skip-covered --cov-report=xml
+```
+
 ## Mock App Harness
 
 The repository includes an OpsBoard fixture under `profiles/fixtures/mock_app` for fast, product-agnostic iteration.
