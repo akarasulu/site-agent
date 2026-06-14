@@ -1,27 +1,54 @@
 from __future__ import annotations
 
 import re
-from dataclasses import replace
-
 from .models import ConceptMapping, CrawlSnapshot, DomainTerm, Evidence, Form, InteractionFlow, MappedSchema, Page, Transition, UiElement
 
 
-DEFAULT_REDACTIONS: list[tuple[re.Pattern[str], str]] = []
+REDACTED = "[REDACTED]"
+SENSITIVE_KEY_RE = re.compile(r"(password|passwd|pwd|token|secret|api[_-]?key|session|cookie)", re.IGNORECASE)
+DEFAULT_REDACTIONS: list[tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(
+            r"\b(password|passwd|pwd|token|secret|api[_-]?key|session(?:_id)?|cookie)"
+            r"(\s*[:=]\s*)"
+            r"([^&\s;,<>'\"]+)",
+            re.IGNORECASE,
+        ),
+        rf"\1\2{REDACTED}",
+    ),
+]
+
+
+def compiled_redactions(extra_patterns: list[str] | None = None) -> list[tuple[re.Pattern[str], str]]:
+    redactions = list(DEFAULT_REDACTIONS)
+    for pattern in extra_patterns or []:
+        redactions.append((re.compile(pattern), REDACTED))
+    return redactions
 
 
 def redact_text(value: str, extra_patterns: list[str] | None = None) -> str:
+    redacted = value
+    for pattern, replacement in compiled_redactions(extra_patterns):
+        redacted = pattern.sub(replacement, redacted)
+    return redacted
+
+
+def redact_value_for_key(key: str, value, extra_patterns: list[str] | None = None):
+    if isinstance(value, str):
+        if SENSITIVE_KEY_RE.search(key):
+            return REDACTED
+        return redact_text(value, extra_patterns)
+    if isinstance(value, list):
+        return [redact_value_for_key(key, item, extra_patterns) for item in value]
+    if isinstance(value, dict):
+        return redact_context(value, extra_patterns)
     return value
 
 
 def redact_context(context: dict, extra_patterns: list[str] | None = None) -> dict:
     safe = {}
     for key, value in context.items():
-        if isinstance(value, str):
-            safe[key] = redact_text(value, extra_patterns)
-        elif isinstance(value, list):
-            safe[key] = [redact_text(item, extra_patterns) if isinstance(item, str) else item for item in value]
-        else:
-            safe[key] = value
+        safe[key] = redact_value_for_key(str(key), value, extra_patterns)
     return safe
 
 
