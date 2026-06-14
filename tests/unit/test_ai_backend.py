@@ -1,11 +1,14 @@
+import json
 import os
 from pathlib import Path
+import urllib.error
 
 import pytest
 
 from site_agent.cli import main
 from site_agent.cli import directional_target_outcomes
 from site_agent.core.ai.backends import FakeAiBackend, OpenAiResponsesBackend, get_ai_backend
+from site_agent.core.models import ConceptMapping, DomainTerm, Evidence, UiElement
 from site_agent.core.ai.research import discover_ui_domain
 from site_agent.core.models import CrawlSnapshot, Page, utc_now
 from site_agent.core.profiles import load_profile
@@ -243,3 +246,205 @@ def test_openai_backend_is_default_when_key_exists(monkeypatch):
     monkeypatch.delenv("SITE_AGENT_AI_PROVIDER", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     assert isinstance(get_ai_backend(), OpenAiResponsesBackend)
+
+
+def test_openai_backend_request_json_parses_output_chunks_and_wraps_errors(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json_bytes({"output": [{"content": [{"text": "{\"ok\": true}"}]}]})
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["data"] = request.data
+        captured["headers"] = request.headers
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    backend = OpenAiResponsesBackend(api_key="secret", model="test-model", base_url="https://api.test/v1")
+
+    result = backend._request_json("Use JSON.", "input", "test_schema", {"type": "object"})
+
+    assert result == {"ok": True}
+    assert captured["url"] == "https://api.test/v1/responses"
+    assert captured["timeout"] == backend.timeout
+    payload = json.loads(captured["data"].decode("utf-8"))
+    assert payload["model"] == "test-model"
+    assert payload["text"]["format"]["name"] == "test_schema"
+
+    def failing_urlopen(request, timeout):
+        raise urllib.error.URLError("network down")
+
+    monkeypatch.setattr("urllib.request.urlopen", failing_urlopen)
+    with pytest.raises(RuntimeError, match="OpenAI Responses API request failed"):
+        backend._request_json("Use JSON.", "input", "test_schema", {"type": "object"})
+
+
+def json_bytes(payload):
+    import json
+
+    return json.dumps(payload).encode("utf-8")
+
+
+class ScriptedOpenAiBackend(OpenAiResponsesBackend):
+    def __init__(self):
+        super().__init__(api_key="test-key", model="test-model")
+        self.calls = []
+
+    def _request_json(self, instructions, input_text, schema_name, schema, tools=None):
+        self.calls.append({"schema_name": schema_name, "input_text": input_text, "tools": tools})
+        responses = {
+            "ontology_terms": {
+                "terms": [
+                    {
+                        "canonical_name": "WAN_Status",
+                        "aliases": ["WAN State"],
+                        "units": [],
+                        "constraints": ["read-only"],
+                        "confidence": 0.91,
+                        "evidence_ids": ["ev_doc"],
+                    }
+                ]
+            },
+            "concept_mapping": {
+                "matched": True,
+                "canonical_name": "WAN Status",
+                "aliases": ["WAN State"],
+                "confidence": 0.88,
+                "evidence_ids": ["ev_ui", "missing"],
+                "reasoning_summary": "matched",
+            },
+            "tool_description": {"description": "Read WAN status."},
+            "field_classification": {
+                "matched": True,
+                "semantic_type": "Admin Email",
+                "value_type": "String",
+                "confidence": 0.9,
+                "evidence_ids": ["ev_ui", "missing"],
+                "reasoning_summary": "field",
+            },
+            "action_intent": {
+                "matched": True,
+                "intent": "Save Settings",
+                "risk_level": "medium",
+                "confidence": 0.87,
+                "evidence_ids": ["ev_ui"],
+                "reasoning_summary": "action",
+            },
+            "constraint_conflicts": {
+                "conflicts": [
+                    {
+                        "kind": "unit_conflict",
+                        "severity": "warning",
+                        "summary": "conflict",
+                        "evidence_ids": ["ev_doc", "missing"],
+                    }
+                ]
+            },
+            "crawl_priorities": {
+                "priorities": [
+                    {
+                        "target": "security",
+                        "reason": "missing firewall terms",
+                        "expected_concepts": ["firewall"],
+                        "priority": 0.75,
+                    }
+                ]
+            },
+            "directional_crawl_plan": {
+                "targets": [
+                    {
+                        "branch_path": ["Internet", ""],
+                        "labels": ["Virtual Server", ""],
+                        "missing_concepts": ["Port Forwarding"],
+                        "reason": "target NAT branch",
+                        "priority": 0.95,
+                        "confidence": 0.82,
+                    }
+                ]
+            },
+            "form_purpose_classification": {
+                "semantic_purpose": "Port Binding",
+                "operation": "Create Or Update",
+                "confidence": 0.7,
+                "evidence_ids": ["missing"],
+                "reasoning_summary": "form",
+                "negative_concepts": ["Port Forwarding"],
+            },
+            "product_doc_research": {
+                "product_name": "Router",
+                "sources": [{"title": "Manual"}, {"title": "Forum"}],
+                "terms": [{"canonical_name": "wan status"}],
+            },
+            "ui_domain_discovery": {
+                "product_name": "Router UI",
+                "sources": [{"title": "Manual"}, {"title": "Forum"}],
+                "terms": [{"canonical_name": "firewall rule"}],
+            },
+        }
+        return responses[schema_name]
+
+
+def test_openai_backend_structured_methods_filter_and_normalize_evidence():
+    backend = ScriptedOpenAiBackend()
+    evidence = [
+        Evidence(id="ev_ui", kind="ui", source="fixture", summary="WAN State"),
+        Evidence(id="ev_doc", kind="doc", source="manual", summary="WAN Status"),
+    ]
+    element = UiElement(
+        id="ui_1",
+        page_id="page",
+        selector_fingerprint="fp",
+        label="WAN State",
+        control_type="submit",
+        evidence_ids=["ev_ui"],
+    )
+    ontology = [DomainTerm(id="term_wan", canonical_name="wan status", sources=["ev_doc"], confidence=0.9)]
+
+    terms = backend.extract_terms([{"evidence_id": "ev_doc", "text": "# WAN Status"}])
+    mapping = backend.align_element(element, ontology, evidence)
+    description = backend.describe_tool(
+        ConceptMapping("ui_1", "term_wan", "wan status", ["WAN State"], 0.9, ["ev_ui"], "ready", "ok"),
+        evidence,
+    )
+    field = backend.classify_field(element, evidence)
+    action = backend.normalize_action(element, evidence)
+    conflicts = backend.detect_conflicts(ontology, evidence)
+    priorities = backend.prioritize_crawl([element], ontology)
+    targets = backend.plan_directional_crawl({"pages": 1}, [{"canonical_name": "port forwarding"}], ontology)
+    form = backend.classify_form_purpose({"form_id": "form", "evidence_ids": ["ev_form"]}, ontology)
+    docs = backend.research_product_docs("Router", max_sources=1)
+    domain = backend.discover_ui_domain("Router WAN", base_url="https://example.test", max_sources=1)
+
+    assert terms[0].canonical_name == "wan status"
+    assert terms[0].sources == ["ev_doc"]
+    assert mapping.evidence_ids == ["ev_ui"]
+    assert description == "Read WAN status."
+    assert field.semantic_type == "admin_email"
+    assert action.intent == "save_settings"
+    assert conflicts[0].evidence_ids == ["ev_doc"]
+    assert priorities[0].target == "security"
+    assert targets[0].missing_concepts == ["port forwarding"]
+    assert form.evidence_ids == ["ev_form"]
+    assert form.negative_concepts == ["port forwarding"]
+    assert docs.sources == [{"title": "Manual"}]
+    assert domain.terms == [{"canonical_name": "firewall rule"}]
+    assert backend.prioritize_crawl([], ontology) == []
+    assert backend.plan_directional_crawl({}, [], ontology) == []
+    assert backend.align_element(
+        UiElement("ui_2", "page", "fp2", "No Evidence", "text", evidence_ids=[]),
+        ontology,
+        evidence,
+    ) is None
+    assert backend.normalize_action(
+        UiElement("ui_3", "page", "fp3", "Plain Field", "text", evidence_ids=["ev_ui"]),
+        evidence,
+    ) is None
