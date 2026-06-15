@@ -154,7 +154,7 @@ def test_generated_ansible_collection_wraps_python_api(tmp_path, monkeypatch):
     assert main(["crawl", "run", "--profile", "opsboard", "--fixture-site", str(fixture / "site")]) == 0
     assert main(["schema", "review", "--profile", "opsboard"]) == 0
     assert main(["mcp", "build", "--profile", "opsboard"]) == 0
-    assert main(["api", "build", "--profile", "opsboard"]) == 0
+    assert Path("output/opsboard/api/api-spec.json").exists()
     assert main(["ansible", "build", "--profile", "opsboard"]) == 0
 
     spec = read_json(Path("output/opsboard/ansible/ansible-spec.json"))
@@ -178,10 +178,16 @@ def test_mcp_build_includes_ui_backed_page_and_form_tools_by_default(tmp_path, m
     assert main(["schema", "review", "--profile", "opsboard"]) == 0
     assert main(["mcp", "build", "--profile", "opsboard"]) == 0
 
+    api_spec = read_json(Path("output/opsboard/api/api-spec.json"))
+    server = read_json(Path("output/opsboard/mcp/server.json"))
     tools = read_json(Path("output/opsboard/mcp/tools.json"))["tools"]
     names = {tool["name"] for tool in tools}
     action_tools = [tool for tool in tools if tool["risk_level"] in {"medium", "high"}]
 
+    assert api_spec["package_name"] == "opsboard_client"
+    assert server["python_api"]["package_name"] == "opsboard_client"
+    delegated = call_tool(Path("output/opsboard/mcp"), "settings_update", {"dry_run": True})
+    assert delegated["execution_surface"] == "python_api"
     assert "settings_update" in names
     assert action_tools
     assert all(tool["dry_run_supported"] for tool in action_tools)

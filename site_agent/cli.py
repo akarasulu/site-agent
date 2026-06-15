@@ -946,14 +946,15 @@ def synthesize_profile_capabilities(profile, no_page_tools: bool = False, no_act
 def cmd_mcp_build(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
     snapshot, tools, bindings, capability_report, capability_report_path = synthesize_profile_capabilities(profile, args.no_page_tools, args.no_action_tools)
+    tool_dicts = [tool.__dict__ if hasattr(tool, "__dict__") else tool for tool in tools]
     write_mcp_package(workspace(), profile.name, tools, bindings, profile.base_url if args.include_writes else None)
-    if (output_root(workspace(), profile.name) / "api" / "api-spec.json").exists():
-        write_api_package(workspace(), profile.name, [tool.__dict__ if hasattr(tool, "__dict__") else tool for tool in tools])
+    api_dir, api_spec = write_api_package(workspace(), profile.name, tool_dicts)
     write_contract(output_root(workspace(), profile.name) / "mcp")
     contract_report = contract_quality_report(profile, tools)
     contract_report_path = output_root(workspace(), profile.name) / "reports" / f"contract-quality-{snapshot.run_id}.json"
     write_json(contract_report_path, contract_report)
     print(f"Generated MCP package: {output_root(workspace(), profile.name) / 'mcp'}")
+    print(f"Generated Python API execution layer: {api_dir} ({api_spec.package_name})")
     print(f"Exposed {len(tools)} semantic capability tool(s). Raw adapters are not public API.")
     print(f"Saved capability report: {capability_report_path}")
     if capability_report["quality"]["numbered_public_names"] or capability_report["quality"]["generic_public_names"]:

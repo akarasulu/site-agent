@@ -50,7 +50,7 @@ This guide maps common failures to the most direct checks and fixes.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Generated API package import fails | Output package path is not on `PYTHONPATH` or package was not generated. | Run `site-agent api build --profile <name>` and install/import from `output/<name>/api/`. |
+| Generated API package import fails | Output package path is not on `PYTHONPATH` or package was not generated. | Run `site-agent mcp build --profile <name>` or `site-agent api build --profile <name>` and install/import from `output/<name>/api/`. |
 | Ansible module claims are too weak | Idempotence evidence is incomplete. | Add current-value read coverage and write/restore evidence, then rebuild. |
 | `ansible-test` is unavailable | Ansible tooling is not installed in the current environment. | Install Ansible test tooling or validate generated modules with a narrower local smoke check. |
 

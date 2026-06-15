@@ -14,8 +14,8 @@ in profile directories, generated adapters, and user-owned output artifacts.
 | --- | --- |
 | Python package | `site-agent` |
 | Console script | `site-agent` |
-| Package metadata version | `1.9.0` in `pyproject.toml` |
-| Runtime package version | `1.9.0` in `site_agent/__init__.py` |
+| Package metadata version | `1.10.0` in `pyproject.toml` |
+| Runtime package version | `1.10.0` in `site_agent/__init__.py` |
 | Supported Python | `>=3.11` |
 | Default browser runtime | Playwright Chromium |
 | Optional crawl backend | Crawl4AI `0.8.9` |
@@ -25,6 +25,8 @@ research-backed crawl cache, page graph, adaptive gain scoring, drift reuse,
 workflow hardening, and documentation constraint-mining layers.
 Checkpoint `v1.9.0` refreshes the developer documentation and research report
 index around those implementation threads.
+Checkpoint `v1.10.0` makes generated MCP builds synchronize the Python API
+execution layer by default.
 
 ## Product Goal
 

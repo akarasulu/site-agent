@@ -12,7 +12,7 @@ current repository state.
 | Crawl and extraction | Playwright crawl, fixture crawl, Crawl4AI backend, static HTML extraction, JS state exploration, dynamic flow probing, and read-only fact extraction exist. |
 | Domain grounding | Ontology seed loading, profile doc ingestion, AI-assisted term extraction, and research session artifacts exist. |
 | Semantic alignment | Lexical plus AI-assisted alignment, confidence bands, review queue, approve/reject/edit, and reviewed schema writing exist. |
-| Generated surfaces | MCP, Python API, Ansible collection, MCP import, contract diff, and adapter refresh commands exist. |
+| Generated surfaces | MCP, Python API, Ansible collection, MCP import, contract diff, adapter refresh commands, and MCP-build Python API synchronization exist. |
 | Configuration versioning | Settings repo init, snapshots, commit/tag, diff, restore plan, readiness, restore dry-run/apply path, verification, and coverage exist. |
 | Quality and drift | Drift reports, adapter reuse analysis, quality gates, coverage comparison, crawl memory, page graph support, and benchmark pack exist. |
 | Research-backed crawl intelligence | Evidence cache, visual block grouping, adaptive crawl gain scoring, cache/gain workflow wiring, and documentation clue mining exist. |
@@ -21,15 +21,13 @@ current repository state.
 
 ## Near-Term Priorities
 
-1.  Keep generated Python API as the shared execution layer for MCP and
-    Ansible, reducing duplicated runtime behavior.
-2.  Add stricter generated contract regression tests for API, MCP, and Ansible
+1.  Add stricter generated contract regression tests for API, MCP, and Ansible
     signature stability.
-3.  Expand configuration coverage checks for staged list workflows and grouped
+2.  Expand configuration coverage checks for staged list workflows and grouped
     restore steps.
-4.  Add benchmark trend history across releases.
-5.  Improve documentation link and artifact validation automation.
-6.  Expand live-browser integration coverage for cache/gain/drift workflows.
+3.  Add benchmark trend history across releases.
+4.  Improve documentation link and artifact validation automation.
+5.  Expand live-browser integration coverage for cache/gain/drift workflows.
 
 ## Phase Plan
 
@@ -71,8 +69,8 @@ Status: implemented, with maturity work remaining.
 
 Future work:
 
-* Ensure all generated MCP and Ansible execution paths delegate to generated
-  Python API where practical.
+* Extend Python API delegation deeper into generated apply-mode adapters where
+  practical.
 * Add stronger generated surface compatibility tests.
 * Improve generated docs inside target packages.
 

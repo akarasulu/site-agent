@@ -1,7 +1,7 @@
 # Final Report
 
 This report summarizes the current engineering state of `site-agent` after the
-research-backed implementation and documentation refresh through `v1.9.0`.
+research-backed implementation and documentation refresh through `v1.10.0`.
 
 ## Executive Summary
 
@@ -22,7 +22,7 @@ validation profiles rather than reusable core code.
 | Core data model | `site_agent/core/models.py` defines evidence, ontology, UI, crawl, mapping, tool, API, Ansible, and drift contracts. |
 | Browser execution | Playwright and optional Crawl4AI backends normalize into `CrawlSnapshot`. |
 | AI boundaries | AI backends exist, but public mappings still carry evidence and confidence gates. |
-| Generated surfaces | MCP, Python API, Ansible, MCP import, contract diffing, and runtime serving are implemented. |
+| Generated surfaces | MCP, Python API, Ansible, MCP import, contract diffing, runtime serving, and MCP-build Python API synchronization are implemented. |
 | Configuration versioning | Save, coverage, diff, restore-plan, restore-readiness, restore, and verification paths exist. |
 | Research-backed crawl intelligence | Evidence cache, visual page graph, adaptive gain scoring, drift-aware adapter reuse, and documentation clue mining are implemented. |
 | Validation assets | Mock app, benchmark pack, router example, unit tests, integration tests, CI, and smoke scripts exist. |
@@ -85,6 +85,6 @@ See [Known Limitations](04_KNOWN_LIMITATIONS.md) for the detailed list.
 ## Release Readiness Conclusion
 
 The architecture documentation is complete enough for developer onboarding,
-implementation planning, and release-gate review at `v1.9.0`. Before a public
+implementation planning, and release-gate review at `v1.10.0`. Before a public
 release, rerun browser-ready smoke checks, benchmark validation, generated
 surface checks, and secret/artifact review against the final release diff.

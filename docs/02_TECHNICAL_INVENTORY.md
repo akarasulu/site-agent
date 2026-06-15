@@ -7,8 +7,8 @@ schemas, fixtures, scripts, generated artifacts, and validation surfaces.
 
 | Item | Location | Notes |
 | --- | --- | --- |
-| Package metadata | `pyproject.toml` | `site-agent` version `1.9.0`; console script maps to `site_agent.cli:main`. |
-| Runtime version | `site_agent/__init__.py` | `__version__ = "1.9.0"`. |
+| Package metadata | `pyproject.toml` | `site-agent` version `1.10.0`; console script maps to `site_agent.cli:main`. |
+| Runtime version | `site_agent/__init__.py` | `__version__ = "1.10.0"`. |
 | Python support | `pyproject.toml` | `>=3.11`; classifiers list 3.11, 3.12, and 3.13. |
 | Optional crawl dependencies | `pyproject.toml` | `playwright>=1.49`, `crawl4ai==0.8.9`. |
 | Development dependencies | `pyproject.toml` | `pytest`, `pytest-cov`, `build`, `twine`. |
@@ -26,7 +26,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `site-agent crawl` | `run`, `collect`, `inventory`, `plan`, `compare`, `merge` | Crawl targets, collect rendered states, build site trees, plan follow-up crawls, compare and merge snapshots. |
 | `site-agent schema` | `review`, `queue`, `approve`, `reject`, `edit` | Align UI elements to ontology and manage review decisions. |
 | `site-agent api` | `build` | Generate a typed Python API package from synthesized tools. |
-| `site-agent mcp` | `build`, `serve`, `call`, `import`, `diff`, `refresh-adapter` | Generate, serve, call, import, compare, and refresh MCP packages. |
+| `site-agent mcp` | `build`, `serve`, `call`, `import`, `diff`, `refresh-adapter` | Generate, serve, call, import, compare, and refresh MCP packages; `build` also syncs the generated Python API execution layer. |
 | `site-agent ansible` | `build` | Generate an Ansible collection from synthesized tools and API spec. |
 | `site-agent explorer` | `build`, `serve` | Build and serve a static semantic API explorer. |
 | `site-agent drift` | `check` | Compare latest crawl snapshots for UI drift. |
@@ -169,7 +169,7 @@ contract-quality thresholds.
 | `output/<profile>/mcp/tools.json` | `site-agent mcp build`. |
 | `output/<profile>/mcp/adapter.bindings.json` | `site-agent mcp build` and `refresh-adapter`. |
 | `output/<profile>/mcp/contract.json` | `site-agent mcp build`. |
-| `output/<profile>/api/` | `site-agent api build`. |
+| `output/<profile>/api/` | `site-agent mcp build` and `site-agent api build`. |
 | `output/<profile>/ansible/` | `site-agent ansible build`. |
 | `output/<profile>/explorer/` | `site-agent explorer build`. |
 | `output/<profile>/reports/*.json` | Debug, action, quality, coverage, AI, drift, collection, and package reports. |

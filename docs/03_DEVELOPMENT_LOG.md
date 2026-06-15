@@ -34,6 +34,7 @@ current repository state. It is not a full git history.
 | `v1.7.0` | Drift-aware adapter reuse analysis. |
 | `v1.8.0` | Documentation constraint, unit, and operation mining into ontology ingestion. |
 | `v1.9.0` | Developer documentation and research report refresh. |
+| `v1.10.0` | MCP build synchronizes the generated Python API execution layer. |
 
 ## Recent Validation Evidence
 

@@ -4,6 +4,15 @@
 
 ## Release Notes
 
+### 1.10.0
+
+- Make `site-agent mcp build` generate and sync the profile's Python API
+  execution layer by default.
+- Update generated MCP `server.json` during MCP builds so runtime calls can
+  delegate through the generated Python API immediately.
+- Add regression coverage proving MCP-built profiles expose the shared Python
+  API layer for MCP calls and generated Ansible modules.
+
 ### 1.9.0
 
 - Refresh the numbered developer documentation suite for the current
