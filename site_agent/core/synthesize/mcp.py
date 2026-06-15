@@ -536,7 +536,7 @@ def synthesize_form_tools(
     bindings: list[AdapterBinding] = []
     seen = seen_names if seen_names is not None else set()
     page_by_id = {page.id: page for page in snapshot.pages}
-    emitted_semantic_forms: set[tuple] = set()
+    emitted_semantic_forms: dict[tuple, int] = {}
     for form in snapshot.forms:
         fields = [element_by_id[field_id] for field_id in form.field_ids if field_id in element_by_id]
         if not fields:
@@ -547,9 +547,25 @@ def synthesize_form_tools(
         label = form_purpose_label(form, page_label, fields, classification)
         dedupe_key = semantic_form_dedupe_key(label, fields, classification)
         if dedupe_key and dedupe_key in emitted_semantic_forms:
+            index = emitted_semantic_forms[dedupe_key]
+            tool = tools[index]
+            binding = bindings[index]
+            tool.evidence_ids = sorted(dict.fromkeys([*tool.evidence_ids, *(eid for field in fields for eid in field.evidence_ids)]))
+            adapter = binding.selector_action_bindings
+            source_form_ids = {str(value) for value in adapter.get("source_form_ids", []) if value}
+            if adapter.get("form_id"):
+                source_form_ids.add(str(adapter["form_id"]))
+            source_form_ids.add(form.id)
+            source_field_ids = {str(value) for value in adapter.get("source_field_ids", []) if value}
+            for field in adapter.get("fields", []) or []:
+                if isinstance(field, dict) and field.get("ui_element_id"):
+                    source_field_ids.add(str(field["ui_element_id"]))
+            source_field_ids.update(field.id for field in fields if field.control_type not in {"submit", "button", "hidden"})
+            adapter["source_form_ids"] = sorted(source_form_ids)
+            adapter["source_field_ids"] = sorted(source_field_ids)
             continue
         if dedupe_key:
-            emitted_semantic_forms.add(dedupe_key)
+            emitted_semantic_forms[dedupe_key] = len(tools)
         risk_level, risk_reason = classify_action_risk(label, [field.label for field in fields])
         name = unique_name(classified_action_tool_name(label, classification), seen)
         properties = {}

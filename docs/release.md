@@ -4,6 +4,17 @@
 
 ## Release Notes
 
+### 1.6.0
+
+- Bound optional OpenAI build-time enrichment behind explicit description and
+  form-classification budgets.
+- Preserve collapsed form provenance across generated capabilities and MCP form
+  tool deduplication.
+- Improve configuration coverage with adapter bindings and internal sentinel
+  field filtering.
+- Capture rendered form geometry, accessibility, and style metadata during
+  browser reconciliation, and bound planned branch crawl time.
+
 ### 1.5.0
 
 - Wire evidence-cache artifacts into crawl runs and fast collection runs.

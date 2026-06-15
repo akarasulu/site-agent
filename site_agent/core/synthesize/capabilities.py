@@ -253,6 +253,10 @@ def semantic_context_name(tool: ToolSpec, binding: AdapterBinding | None, is_wri
         return "internet_ddns_update"
     if "sntp" in labels or "ntp server" in labels or "time zone" in labels:
         return "internet_sntp_update"
+    if "upnp" in labels:
+        return "local_network_upnp_update"
+    if "ftp" in labels:
+        return "local_network_ftp_update"
     if "dms" in labels or "media source" in labels:
         return "local_network_dms_update"
     if "dmz" in labels or "lan host" in labels:
@@ -297,6 +301,8 @@ def semantic_write_name(tool: ToolSpec) -> str | None:
         return "wifi_radio_update"
     if "upnp" in text:
         return "local_network_upnp_update"
+    if "ftp" in text:
+        return "local_network_ftp_update"
     if "access devices" in text:
         return None
     if "url" in text:
@@ -703,6 +709,38 @@ def remap_binding(binding: AdapterBinding, semantic_name: str) -> AdapterBinding
     return replace(binding, tool_name=semantic_name, selector_action_bindings=normalize_binding_args(binding.selector_action_bindings, semantic_name))
 
 
+def adapter_form_ids(adapter: dict[str, Any]) -> set[str]:
+    form_ids = {str(value) for value in adapter.get("source_form_ids", []) if value}
+    if adapter.get("form_id"):
+        form_ids.add(str(adapter["form_id"]))
+    return form_ids
+
+
+def adapter_field_ids(adapter: dict[str, Any]) -> set[str]:
+    field_ids = {str(value) for value in adapter.get("source_field_ids", []) if value}
+    for field in adapter.get("fields", []) or []:
+        if isinstance(field, dict) and field.get("ui_element_id"):
+            field_ids.add(str(field["ui_element_id"]))
+    return field_ids
+
+
+def merge_tool_provenance(existing: ToolSpec, candidate: ToolSpec) -> ToolSpec:
+    evidence_ids = sorted(dict.fromkeys([*existing.evidence_ids, *candidate.evidence_ids]))
+    return replace(existing, evidence_ids=evidence_ids, confidence=max(existing.confidence, candidate.confidence))
+
+
+def merge_binding_provenance(existing: AdapterBinding, candidate: AdapterBinding) -> AdapterBinding:
+    existing_adapter = dict(existing.selector_action_bindings)
+    candidate_adapter = candidate.selector_action_bindings
+    form_ids = sorted(adapter_form_ids(existing_adapter) | adapter_form_ids(candidate_adapter))
+    field_ids = sorted(adapter_field_ids(existing_adapter) | adapter_field_ids(candidate_adapter))
+    if form_ids:
+        existing_adapter["source_form_ids"] = form_ids
+    if field_ids:
+        existing_adapter["source_field_ids"] = field_ids
+    return replace(existing, selector_action_bindings=existing_adapter)
+
+
 def choose_better(existing: ToolSpec, candidate: ToolSpec) -> bool:
     if candidate.confidence != existing.confidence:
         return candidate.confidence > existing.confidence
@@ -839,7 +877,16 @@ def synthesize_capabilities(
             capability_tool = replace(capability_tool, exposure_level="review_required")
         capability_binding = remap_binding(binding, semantic_name)
         collapsed[semantic_name] = collapsed.get(semantic_name, 0) + 1
+        if semantic_name in selected:
+            selected_tool, selected_binding = selected[semantic_name]
+            selected[semantic_name] = (
+                merge_tool_provenance(selected_tool, capability_tool),
+                merge_binding_provenance(selected_binding, capability_binding),
+            )
         if semantic_name not in selected or choose_better(selected[semantic_name][0], tool):
+            if semantic_name in selected:
+                capability_tool = merge_tool_provenance(capability_tool, selected[semantic_name][0])
+                capability_binding = merge_binding_provenance(capability_binding, selected[semantic_name][1])
             selected[semantic_name] = (capability_tool, capability_binding)
 
     section_names: list[str] = []

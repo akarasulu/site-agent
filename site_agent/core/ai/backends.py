@@ -21,6 +21,16 @@ def slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
 
 
+def env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return default
+
+
 @dataclass
 class AlignmentSuggestion:
     canonical_name: str
@@ -430,8 +440,12 @@ class OpenAiResponsesBackend(NoopAiBackend):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = float(os.environ.get("SITE_AGENT_AI_TIMEOUT", "30"))
-        self.alignment_budget = int(os.environ.get("SITE_AGENT_AI_ALIGNMENT_BUDGET", "8"))
+        self.alignment_budget = env_int("SITE_AGENT_AI_ALIGNMENT_BUDGET", 8)
+        self.description_budget = env_int("SITE_AGENT_AI_TOOL_DESCRIPTION_BUDGET", 0)
+        self.form_classification_budget = env_int("SITE_AGENT_AI_FORM_CLASSIFICATION_BUDGET", 0)
         self._alignment_calls = 0
+        self._description_calls = 0
+        self._form_classification_calls = 0
 
     def _request_json(self, instructions: str, input_text: str, schema_name: str, schema: dict[str, Any], tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         payload = {
@@ -577,6 +591,9 @@ class OpenAiResponsesBackend(NoopAiBackend):
         )
 
     def describe_tool(self, mapping: ConceptMapping, evidence: list[Evidence]) -> str | None:
+        if self._description_calls >= self.description_budget:
+            return None
+        self._description_calls += 1
         result = self._request_json(
             instructions="Write one concise human-readable MCP tool description grounded only in supplied evidence.",
             input_text=json.dumps(
@@ -863,6 +880,9 @@ class OpenAiResponsesBackend(NoopAiBackend):
         ontology: list[DomainTerm],
         research_memory: dict[str, Any] | None = None,
     ) -> FormPurposeClassification | None:
+        if self._form_classification_calls >= self.form_classification_budget:
+            return None
+        self._form_classification_calls += 1
         result = self._request_json(
             instructions=(
                 "Classify the purpose of one discovered web-admin form. Use page path, page label, fields, nearby/domain ontology, "

@@ -1,5 +1,14 @@
 from site_agent.core.ai.backends import FakeAiBackend
-from site_agent.core.crawl.playwright import append_state_path_url, best_navigation_label, is_safe_navigation_label, path_revisit_allowed, rank_navigation_labels, safe_click_patterns
+from site_agent.core.crawl.playwright import (
+    append_state_path_url,
+    best_navigation_label,
+    is_safe_navigation_label,
+    path_revisit_allowed,
+    planned_branch_key,
+    planned_branch_time_budget_seconds,
+    rank_navigation_labels,
+    safe_click_patterns,
+)
 from site_agent.core.models import DomainTerm
 from site_agent.core.profiles import CrawlPolicy, Profile
 import pytest
@@ -56,6 +65,25 @@ def test_navigation_paths_are_replayable_and_do_not_repeat_seed_sections():
     assert not path_revisit_allowed(("Status", "WAN"), "Status", profile)
 
 
+def test_planned_branch_budget_groups_deep_paths_by_first_two_segments():
+    assert planned_branch_key(("Local Network", "LAN", "IPv4")) == ("local network", "lan")
+    assert planned_branch_key(("Topology",)) == ("topology",)
+
+    budget = planned_branch_time_budget_seconds(
+        [
+            ["Local Network", "LAN", "IPv4"],
+            ["Local Network", "LAN", "IPv6"],
+            ["Internet", "Status", "WAN"],
+            ["Topology"],
+        ],
+        start_time=100.0,
+        deadline=220.0,
+    )
+
+    assert budget == 40.0
+    assert planned_branch_time_budget_seconds(None, 100.0, 220.0) is None
+
+
 def test_best_navigation_label_maps_compound_ai_target_to_visible_tab():
     labels = ["Firewall", "Filter Criteria", "DMZ", "Port Forwarding"]
 
@@ -64,7 +92,7 @@ def test_best_navigation_label_maps_compound_ai_target_to_visible_tab():
 
 
 def test_form_flow_probe_detects_visible_dynamic_new_item():
-    from playwright.sync_api import sync_playwright
+    sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright
 
     from site_agent.core.crawl.playwright import probe_form_flows
     from site_agent.core.models import CrawlSnapshot, Page, utc_now
@@ -117,7 +145,7 @@ def test_form_flow_probe_detects_visible_dynamic_new_item():
 
 
 def test_browser_form_capture_reconciles_visible_controls_without_parser_fields():
-    from playwright.sync_api import sync_playwright
+    sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright
 
     from site_agent.core.crawl.playwright import capture_browser_forms
     from site_agent.core.models import CrawlSnapshot, Page, utc_now

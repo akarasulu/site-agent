@@ -462,7 +462,12 @@ def test_semantic_form_tools_are_deduplicated_by_purpose_and_field_shape():
     names = [tool.name for tool in tools]
     assert names.count("submit_port_forwarding_rule") == 1
     assert not any(name.startswith("submit_port_forwarding_rule_") for name in names)
-    assert len([binding for binding in bindings if binding.tool_name == "submit_port_forwarding_rule"]) == 1
+    matching_bindings = [binding for binding in bindings if binding.tool_name == "submit_port_forwarding_rule"]
+    assert len(matching_bindings) == 1
+    assert matching_bindings[0].selector_action_bindings["source_form_ids"] == ["form_1", "form_2"]
+    assert {"name_1", "name_2"} <= set(matching_bindings[0].selector_action_bindings["source_field_ids"])
+    tool = next(tool for tool in tools if tool.name == "submit_port_forwarding_rule")
+    assert {"ev1", "ev2"} <= set(tool.evidence_ids)
 
 
 def test_benchmark_pack_runs_fixture_types_including_staged_dialogs(tmp_path, monkeypatch):

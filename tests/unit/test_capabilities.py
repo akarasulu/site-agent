@@ -175,6 +175,7 @@ def test_semantic_name_helpers_cover_read_write_context_matrix():
         (make_tool("submit_upnp", "UPnP"), "local_network_upnp_update"),
         (make_tool("submit_devices", "Access devices"), None),
         (make_tool("submit_url", "URL"), "security_url_filter_update"),
+        (make_tool("submit_ftp", "FTP server"), "local_network_ftp_update"),
         (make_tool("apply_filters", "Apply filters"), "incident_filters_apply"),
         (make_tool("send_invite", "Send invite"), "users_invite_send"),
         (make_tool("export_report", "Export report"), "reports_export"),
@@ -196,6 +197,8 @@ def test_semantic_name_helpers_cover_read_write_context_matrix():
         (make_tool("submit"), make_binding("submit", page_label="Maximum Hops Egress"), True, "management_network_diagnostics_run"),
         (make_tool("submit"), make_binding("submit", page_label="Provider URL Domain Information Hash"), True, "internet_ddns_update"),
         (make_tool("submit"), make_binding("submit", page_label="Media Source"), True, "local_network_dms_update"),
+        (make_tool("submit"), make_binding("submit", page_label="UPnP", fields=[{"arg": "enabled", "label": "UPnP"}]), True, "local_network_upnp_update"),
+        (make_tool("submit"), make_binding("submit", page_label="FTP", fields=[{"arg": "server", "label": "Server"}]), True, "local_network_ftp_update"),
         (make_tool("submit"), make_binding("submit", fields=[], page_label="Prefix Delegate LAN IPv6"), True, "local_network_dhcpv6_update"),
         (make_tool("submit"), make_binding("submit", fields=[], page_label="Show Password SSID Name"), True, "wifi_ssid_update"),
     ]
@@ -340,3 +343,23 @@ def test_synthesize_capabilities_collapses_adapters_and_adds_page_sections():
     assert report["collapsed_adapter_counts"]["security_firewall_get"] == 2
     assert report["discarded_adapter_count"] == 1
     assert any(binding.tool_name == "security_port_forwarding_create_or_update" for binding in bindings)
+
+
+def test_synthesize_capabilities_preserves_collapsed_form_provenance():
+    first = make_tool("submit_rule", "Port forwarding rule", source_type="ui_form")
+    second = make_tool("submit_rule_duplicate", "Port forwarding rule", source_type="ui_form")
+
+    tools, bindings, report = synthesize_capabilities(
+        [first, second],
+        [
+            make_binding("submit_rule", form_id="form_1", fields=[{"arg": "Name_1", "label": "Name", "ui_element_id": "field_1"}]),
+            make_binding("submit_rule_duplicate", form_id="form_2", fields=[{"arg": "Name_1", "label": "Name", "ui_element_id": "field_2"}]),
+        ],
+    )
+
+    assert report["collapsed_adapter_counts"]["security_port_forwarding_create_or_update"] == 2
+    tool = next(tool for tool in tools if tool.name == "security_port_forwarding_create_or_update")
+    binding = next(binding for binding in bindings if binding.tool_name == "security_port_forwarding_create_or_update")
+    assert {"ev_submit_rule", "ev_submit_rule_duplicate"} <= set(tool.evidence_ids)
+    assert binding.selector_action_bindings["source_form_ids"] == ["form_1", "form_2"]
+    assert binding.selector_action_bindings["source_field_ids"] == ["field_1", "field_2"]

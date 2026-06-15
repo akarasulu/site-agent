@@ -117,6 +117,8 @@ Validation:
 
 ### Sprint 5: Workflow Hardening And Provenance Preservation
 
+Status: implemented in `1.6.0`.
+
 Deliverables:
 
 * Capture visual/accessibility browser metadata for reconciled forms.

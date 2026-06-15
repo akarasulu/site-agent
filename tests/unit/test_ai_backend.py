@@ -177,6 +177,7 @@ def test_live_crawl_with_active_ai_runs_ui_domain_discovery(tmp_path, monkeypatc
         "crawl_profile",
         lambda workspace, profile, *args, **kwargs: CrawlSnapshot(timestamp=utc_now(), profile_id=profile.id, run_id="run_live_ai"),
     )
+    monkeypatch.setattr(cli, "inventory_profile", lambda *args, **kwargs: {"nodes": [], "node_count": 0, "coverage": {"complete": True}})
 
     assert main(["profile", "init", "--name", "router", "--base-url", "https://192.0.2.1"]) == 0
     assert main(["crawl", "run", "--profile", "router"]) == 0
@@ -213,6 +214,7 @@ def test_planned_live_crawl_reuses_existing_research_session(tmp_path, monkeypat
         "crawl_profile",
         lambda workspace, profile, *args, **kwargs: CrawlSnapshot(timestamp=utc_now(), profile_id=profile.id, run_id="run_planned"),
     )
+    monkeypatch.setattr(cli, "inventory_profile", lambda *args, **kwargs: {"nodes": [], "node_count": 0, "coverage": {"complete": True}})
 
     assert main(["crawl", "run", "--profile", "router", "--use-plan", "latest"]) == 0
     captured = capsys.readouterr()
@@ -288,6 +290,80 @@ def test_openai_backend_request_json_parses_output_chunks_and_wraps_errors(monke
         backend._request_json("Use JSON.", "input", "test_schema", {"type": "object"})
 
 
+def test_openai_build_enrichment_budgets_default_to_zero(monkeypatch):
+    monkeypatch.delenv("SITE_AGENT_AI_TOOL_DESCRIPTION_BUDGET", raising=False)
+    monkeypatch.delenv("SITE_AGENT_AI_FORM_CLASSIFICATION_BUDGET", raising=False)
+    backend = OpenAiResponsesBackend(api_key="secret", model="test-model", base_url="https://api.test/v1")
+
+    def fail_request(*args, **kwargs):
+        raise AssertionError("optional build enrichment should not call OpenAI by default")
+
+    monkeypatch.setattr(backend, "_request_json", fail_request)
+    mapping = ConceptMapping("ui_ssid", "term_ssid", "ssid", ["SSID"], 0.9, ["ev_ssid"], "ready", "matched")
+
+    assert backend.describe_tool(mapping, []) is None
+    assert backend.classify_form_purpose({"form_id": "form_ssid", "evidence_ids": ["ev_ssid"]}, [], {}) is None
+
+
+def test_openai_build_enrichment_budgets_are_explicit_and_capped(monkeypatch):
+    monkeypatch.setenv("SITE_AGENT_AI_TOOL_DESCRIPTION_BUDGET", "1")
+    monkeypatch.setenv("SITE_AGENT_AI_FORM_CLASSIFICATION_BUDGET", "1")
+    backend = OpenAiResponsesBackend(api_key="secret", model="test-model", base_url="https://api.test/v1")
+    calls = []
+
+    def fake_request(instructions, input_text, schema_name, schema, tools=None):
+        calls.append(schema_name)
+        if schema_name == "tool_description":
+            return {"description": "Read SSID from approved evidence."}
+        if schema_name == "form_purpose_classification":
+            return {
+                "semantic_purpose": "wireless settings",
+                "operation": "update",
+                "confidence": 0.7,
+                "evidence_ids": ["ev_ssid"],
+                "reasoning_summary": "Fields reference SSID settings.",
+                "negative_concepts": [],
+            }
+        raise AssertionError(schema_name)
+
+    monkeypatch.setattr(backend, "_request_json", fake_request)
+    mapping = ConceptMapping("ui_ssid", "term_ssid", "ssid", ["SSID"], 0.9, ["ev_ssid"], "ready", "matched")
+
+    assert backend.describe_tool(mapping, []) == "Read SSID from approved evidence."
+    assert backend.describe_tool(mapping, []) is None
+    classification = backend.classify_form_purpose({"form_id": "form_ssid", "evidence_ids": ["ev_ssid"]}, [], {})
+    assert classification is not None
+    assert classification.semantic_purpose == "wireless settings"
+    assert backend.classify_form_purpose({"form_id": "form_ssid_2", "evidence_ids": ["ev_ssid"]}, [], {}) is None
+    assert calls == ["tool_description", "form_purpose_classification"]
+
+
+def test_mcp_build_with_openai_key_skips_optional_network_enrichment_by_default(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SITE_AGENT_AI_PROVIDER", "none")
+    html = tmp_path / "fixture.html"
+    html.write_text("<h1>Settings</h1><form><input aria-label='SSID'></form>", encoding="utf-8")
+
+    assert main(["profile", "init", "--name", "demo", "--base-url", "https://example.com"]) == 0
+    write_json(
+        Path("profiles/demo/ontology.seed.json"),
+        {"terms": [{"canonical_name": "ssid", "aliases": ["wifi name"], "sources": ["manual"], "confidence": 0.9}]},
+    )
+    assert main(["crawl", "run", "--profile", "demo", "--fixture-html", str(html)]) == 0
+    assert main(["schema", "review", "--profile", "demo"]) == 0
+
+    def fail_urlopen(*args, **kwargs):
+        raise AssertionError("mcp build should not call OpenAI for optional enrichment by default")
+
+    monkeypatch.setenv("SITE_AGENT_AI_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.delenv("SITE_AGENT_AI_TOOL_DESCRIPTION_BUDGET", raising=False)
+    monkeypatch.delenv("SITE_AGENT_AI_FORM_CLASSIFICATION_BUDGET", raising=False)
+    monkeypatch.setattr("urllib.request.urlopen", fail_urlopen)
+
+    assert main(["mcp", "build", "--profile", "demo", "--include-writes"]) == 0
+
+
 def json_bytes(payload):
     import json
 
@@ -297,6 +373,8 @@ def json_bytes(payload):
 class ScriptedOpenAiBackend(OpenAiResponsesBackend):
     def __init__(self):
         super().__init__(api_key="test-key", model="test-model")
+        self.description_budget = 100
+        self.form_classification_budget = 100
         self.calls = []
 
     def _request_json(self, instructions, input_text, schema_name, schema, tools=None):

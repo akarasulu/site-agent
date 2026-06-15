@@ -703,9 +703,20 @@ def capture_browser_forms(snapshot: CrawlSnapshot, page, page_id: str, state_url
                       id: el.getAttribute('id') || '',
                       name: el.getAttribute('name') || '',
                       type,
+                      role: el.getAttribute('role') || '',
+                      ariaLabel: el.getAttribute('aria-label') || '',
                       label: fallbackLabel(el),
                       value: el.value || el.getAttribute('value') || '',
                       visible,
+                      bbox: {x: rect.x, y: rect.y, width: rect.width, height: rect.height},
+                      style: {
+                        display: style.display,
+                        visibility: style.visibility,
+                        fontSize: style.fontSize,
+                        fontWeight: style.fontWeight,
+                        color: style.color,
+                        backgroundColor: style.backgroundColor,
+                      },
                     };
                   })
                   .filter(control => control.visible);
@@ -751,8 +762,15 @@ def capture_browser_forms(snapshot: CrawlSnapshot, page, page_id: str, state_url
                 context={
                     **context,
                     "form_id": form.id,
+                    "dom_tag": control.get("tag"),
                     "selector_id": control.get("id"),
                     "selector_name": control.get("name"),
+                    "accessibility_role": control.get("role"),
+                    "accessibility_name": control.get("ariaLabel") or label,
+                    "aria_label": control.get("ariaLabel"),
+                    "visible": control.get("visible"),
+                    "visual_bbox": control.get("bbox"),
+                    "computed_style": control.get("style"),
                     "read_value": control.get("value", ""),
                     "browser_reconciled_form": True,
                 },
@@ -856,6 +874,27 @@ def path_revisit_allowed(path: tuple[str, ...], label: str, profile: Profile) ->
     return label_key not in normalized_path
 
 
+def planned_branch_key(path: tuple[str, ...]) -> tuple[str, ...]:
+    normalized = [normalize_term(label) for label in path if normalize_term(label)]
+    if len(normalized) >= 2:
+        return tuple(normalized[:2])
+    return tuple(normalized[:1])
+
+
+def planned_branch_time_budget_seconds(planned_paths: list[list[str]] | None, start_time: float, deadline: float | None) -> float | None:
+    if not planned_paths or deadline is None:
+        return None
+    branch_keys = {
+        planned_branch_key(tuple(str(label) for label in path if str(label).strip()))
+        for path in planned_paths
+    }
+    branch_count = max(1, len([key for key in branch_keys if key]))
+    remaining = max(0.0, deadline - start_time)
+    if remaining <= 0:
+        return None
+    return max(20.0, min(90.0, remaining / branch_count))
+
+
 def crawl_js_state_graph(
     snapshot: CrawlSnapshot,
     page,
@@ -874,6 +913,10 @@ def crawl_js_state_graph(
     progress_offset: int = 0,
 ) -> list:
     transitions = []
+    planned_mode = bool(planned_paths)
+    started_at = time.monotonic()
+    branch_time_budget = planned_branch_time_budget_seconds(planned_paths, started_at, deadline)
+    branch_elapsed: dict[tuple[str, ...], float] = {}
     root_labels = discover_primary_navigation_labels(page, profile)
     root_label_keys = {normalize_term(label) for label in root_labels}
     labels, ai_calls_remaining = rank_navigation_labels(
@@ -912,7 +955,13 @@ def crawl_js_state_graph(
             continue
         if not path or any(not is_safe_navigation_label(label, safe_click_patterns(profile)) for label in path):
             continue
+        branch_key = planned_branch_key(path)
+        if branch_time_budget is not None and branch_key and branch_elapsed.get(branch_key, 0.0) >= branch_time_budget:
+            continue
+        branch_started_at = time.monotonic()
         if not replay_navigation_path(page, base_url, path, profile):
+            if branch_time_budget is not None and branch_key:
+                branch_elapsed[branch_key] = branch_elapsed.get(branch_key, 0.0) + (time.monotonic() - branch_started_at)
             continue
         visited_paths.add(normalized_path)
         state_url = append_state_path_url(page.url or base_url, path)
@@ -946,8 +995,12 @@ def crawl_js_state_graph(
             )
         )
         if len(path) >= profile.crawl.max_js_depth:
+            if branch_time_budget is not None and branch_key:
+                branch_elapsed[branch_key] = branch_elapsed.get(branch_key, 0.0) + (time.monotonic() - branch_started_at)
             continue
         if deadline and time.monotonic() >= deadline:
+            if branch_time_budget is not None and branch_key:
+                branch_elapsed[branch_key] = branch_elapsed.get(branch_key, 0.0) + (time.monotonic() - branch_started_at)
             break
         visible_labels = discover_navigation_labels(page, profile)
         child_visible_labels = [label for label in visible_labels if normalize_term(label) not in parent_label_keys]
@@ -970,7 +1023,12 @@ def crawl_js_state_graph(
             pending_paths = {item[0] for item in pending}
             if next_normalized not in visited_paths and next_path not in pending_paths and len(pending) + len(visited_paths) < profile.crawl.max_js_states:
                 front_paths.append((next_path, visible_label_keys))
-        pending = front_paths + pending
+        if branch_time_budget is not None and branch_key:
+            branch_elapsed[branch_key] = branch_elapsed.get(branch_key, 0.0) + (time.monotonic() - branch_started_at)
+        if planned_mode:
+            pending.extend(front_paths)
+        else:
+            pending = front_paths + pending
     return transitions
 
 

@@ -145,6 +145,115 @@ def test_config_coverage_flags_unprobed_actions_and_missing_restore_tools():
     }
 
 
+def test_config_coverage_counts_canonical_tools_with_submit_form_bindings():
+    snapshot = CrawlSnapshot(
+        timestamp=utc_now(),
+        profile_id="profile",
+        run_id="run",
+        pages=[Page(id="page", url="https://example.com/settings")],
+        forms=[Form(id="form", page_id="page", label="WAN", field_ids=["connection"])],
+        elements=[
+            UiElement(
+                id="connection",
+                page_id="page",
+                selector_fingerprint="connection",
+                label="Connection Name",
+                control_type="text",
+                evidence_ids=["ev_connection"],
+            )
+        ],
+        evidence=[Evidence(id="ev_connection", kind="ui", source="ui", summary="Connection Name label")],
+    )
+    tools = [
+        {
+            "name": "internet_wan_update",
+            "description": "Configure WAN.",
+            "args": {},
+            "return_schema": {},
+            "risk_level": "medium",
+            "evidence_ids": ["ev_connection"],
+            "source_type": "canonical_concept",
+            "confidence": 0.85,
+        }
+    ]
+    bindings = {
+        "bindings": [
+            {
+                "tool_name": "internet_wan_update",
+                "selector_action_bindings": {
+                    "action": "submit_form",
+                    "form_id": "form",
+                    "fields": [{"ui_element_id": "connection", "arg": "connection_name", "label": "Connection Name"}],
+                },
+            }
+        ]
+    }
+
+    report = build_config_coverage_report("profile", "demo", snapshot, tools=tools, bindings=bindings)
+
+    assert report["tool_coverage"]["source_type_counts"]["canonical_concept"] == 1
+    assert report["tool_coverage"]["form_action_binding_tools"] == 1
+    assert report["tool_coverage"]["forms_requiring_restore_or_write_tools"] == 1
+    assert report["tool_coverage"]["forms_without_restore_or_write_tools"] == []
+    assert report["confidence"]["components"]["restore_or_write_tool_coverage"] == 1.0
+
+
+def test_config_coverage_ignores_internal_form_sentinel_fields():
+    snapshot = CrawlSnapshot(
+        timestamp=utc_now(),
+        profile_id="profile",
+        run_id="run",
+        pages=[Page(id="page", url="https://example.com/status")],
+        forms=[Form(id="form", page_id="page", label="Status", field_ids=["sentinel"])],
+        elements=[
+            UiElement(
+                id="sentinel",
+                page_id="page",
+                selector_fingerprint="sentinel",
+                label="_stopFormAutoSubmit",
+                control_type="text",
+                context={"read_value": ""},
+                evidence_ids=["ev_sentinel"],
+            )
+        ],
+        evidence=[Evidence(id="ev_sentinel", kind="ui", source="ui", summary="Internal form sentinel")],
+    )
+
+    report = build_config_coverage_report("profile", "demo", snapshot, tools=[])
+
+    assert report["scope"]["fields_seen"] == 0
+    assert report["tool_coverage"]["forms_requiring_restore_or_write_tools"] == 0
+    assert report["tool_coverage"]["forms_without_restore_or_write_tools"] == []
+    assert not any(gap["kind"] == "missing_restore_or_write_tools" for gap in report["gaps"])
+
+
+def test_config_coverage_ignores_empty_binary_text_shadow_fields():
+    snapshot = CrawlSnapshot(
+        timestamp=utc_now(),
+        profile_id="profile",
+        run_id="run",
+        pages=[Page(id="page", url="https://example.com/status")],
+        forms=[Form(id="form", page_id="page", label="Status", field_ids=["off_shadow"])],
+        elements=[
+            UiElement(
+                id="off_shadow",
+                page_id="page",
+                selector_fingerprint="off-shadow",
+                label="Off",
+                control_type="text",
+                context={"read_value": ""},
+                evidence_ids=["ev_off"],
+            )
+        ],
+        evidence=[Evidence(id="ev_off", kind="ui", source="ui", summary="Empty text shadow for an Off control")],
+    )
+
+    report = build_config_coverage_report("profile", "demo", snapshot, tools=[])
+
+    assert report["scope"]["fields_seen"] == 0
+    assert report["tool_coverage"]["forms_requiring_restore_or_write_tools"] == 0
+
+
 def test_config_coverage_convergence_uses_previous_snapshot():
     previous = CrawlSnapshot(
         timestamp=utc_now(),
