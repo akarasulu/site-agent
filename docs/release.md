@@ -4,6 +4,15 @@
 
 ## Release Notes
 
+### 1.7.0
+
+- Add drift-aware adapter reuse analysis for selector changes that preserve
+  labels, control types, state paths, and visual position.
+- Extend `drift check` reports with adapter reuse summaries for stable,
+  reuse-candidate, review-required, and broken bindings.
+- Keep existing selector drift findings intact while adding richer
+  contract-preservation evidence.
+
 ### 1.6.0
 
 - Bound optional OpenAI build-time enrichment behind explicit description and

@@ -33,6 +33,7 @@ from site_agent.core.debug import build_debug_report
 from site_agent.core.debug import state_path
 from site_agent.core.doctor import doctor_checks, run_playwright_install
 from site_agent.core.drift.check import compare_snapshots
+from site_agent.core.drift.reuse import build_adapter_reuse_report
 from site_agent.core.evidence_cache import build_evidence_cache, diff_evidence_caches, load_evidence_cache, write_evidence_cache
 from site_agent.core.explorer import write_explorer
 from site_agent.core.form_classify import classify_forms
@@ -1139,11 +1140,29 @@ def cmd_drift_check(args: argparse.Namespace) -> int:
     previous = snapshot_from_json(read_json(snapshots[-2]))
     current = snapshot_from_json(read_json(snapshots[-1]))
     report = compare_snapshots(profile.id, previous, current)
+    adapter_reuse = build_adapter_reuse_report(previous, current, latest_bindings(profile.name))
     path = output_root(workspace(), profile.name) / "reports" / f"drift-{report.run_id}.json"
-    write_json(path, report)
+    write_json(
+        path,
+        {
+            "profile_id": report.profile_id,
+            "run_id": report.run_id,
+            "generated_at": report.generated_at,
+            "findings": report.findings,
+            "adapter_reuse": adapter_reuse,
+        },
+    )
     print(f"Saved drift report: {path}")
     for finding in report.findings:
         print(f"- {finding.severity}: {finding.summary}")
+    reuse_summary = adapter_reuse["summary"]
+    print(
+        "Adapter reuse: "
+        f"{reuse_summary['stable']} stable, "
+        f"{reuse_summary['reuse_candidates']} reuse candidate(s), "
+        f"{reuse_summary['review_required']} review-required, "
+        f"{reuse_summary['broken']} broken."
+    )
     print(f"Next: site-agent schema review --profile {profile.name} if drift changed semantics.")
     return 0
 

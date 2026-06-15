@@ -136,6 +136,8 @@ Validation:
 
 ### Sprint 6: Drift-Aware Wrapper Reuse
 
+Status: implemented in `1.7.0`.
+
 Use learned templates to keep contracts stable through UI changes.
 
 Deliverables:
