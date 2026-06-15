@@ -4,6 +4,16 @@
 
 ## Release Notes
 
+### 1.4.0
+
+- Add adaptive crawl gain scoring that combines missing ontology terms,
+  observed UI labels, evidence-cache discoveries, changed page content,
+  coverage preservation states, and crawl memory promotions/demotions.
+- Add gain summaries so future crawl plans can explain which signals drove the
+  top labels.
+- Keep the scorer independent from planner wiring so existing crawl planning
+  work can adopt it without losing current behavior.
+
 ### 1.3.0
 
 - Add visual-block extraction to page graphs, grouping rendered elements by

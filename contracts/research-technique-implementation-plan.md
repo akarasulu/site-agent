@@ -81,6 +81,9 @@ Validation:
 
 Use cache and page graph signals to reduce duplicate work.
 
+Status: implemented as a reusable scorer in `1.4.0`; planner wiring remains a
+follow-on integration task so current in-flight planner changes are preserved.
+
 Deliverables:
 
 * Rank next crawl labels by expected gain: missing terms, new template families,
