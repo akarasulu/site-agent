@@ -4,6 +4,16 @@
 
 ## Release Notes
 
+### 1.8.0
+
+- Extract deterministic documentation clues from local manuals: ranges,
+  allowed values, defaults, required/read-only hints, operation verbs, and
+  common units.
+- Attach section-local documentation constraints and units to ontology terms
+  during document ingestion.
+- Add tests covering direct clue extraction and end-to-end profile document
+  ingestion.
+
 ### 1.7.0
 
 - Add drift-aware adapter reuse analysis for selector changes that preserve

@@ -11,6 +11,17 @@ from site_agent.core.storage import read_json, write_json
 
 
 WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9 _/-]{1,60}")
+HEADING_RE = re.compile(r"^#{1,3}\s+(.+)$", re.MULTILINE)
+RANGE_RE = re.compile(
+    r"\b(?:valid\s+range|allowed\s+range|range|length)\s*[:=]?\s*"
+    r"([0-9]+(?:\.[0-9]+)?)\s*(?:-|~|to)\s*([0-9]+(?:\.[0-9]+)?)",
+    re.I,
+)
+ALLOWED_VALUES_RE = re.compile(r"\b(?:allowed values|valid values|options|choices)\s*[:=]\s*([^\n.;]+)", re.I)
+DEFAULT_RE = re.compile(r"\bdefault\s*[:=]\s*([^\n.;]+)", re.I)
+UNIT_RE = re.compile(r"\b(ms|seconds?|minutes?|hours?|days?|kbps|mbps|gbps|hz|khz|mhz|ghz|dbm|%|percent)\b", re.I)
+OPERATION_RE = re.compile(r"\b(create|add|update|edit|delete|remove|enable|disable|apply|restore|restart|reboot)\b", re.I)
+CONSTRAINT_TOKEN_RE = re.compile(r"\b(required|optional|read[- ]only|immutable|case[- ]sensitive)\b", re.I)
 
 
 def normalize_term(value: str) -> str:
@@ -20,6 +31,47 @@ def normalize_term(value: str) -> str:
 def slug(value: str) -> str:
     normalized = normalize_term(value)
     return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+
+
+def extract_document_clues(text: str) -> dict[str, list[str]]:
+    constraints: list[str] = []
+    units: list[str] = []
+    for match in RANGE_RE.finditer(text):
+        constraints.append(f"range: {match.group(1)}-{match.group(2)}")
+    for match in ALLOWED_VALUES_RE.finditer(text):
+        values = ", ".join(part.strip() for part in re.split(r"[,/|]", match.group(1)) if part.strip())
+        if values:
+            constraints.append(f"allowed values: {values}")
+    for match in DEFAULT_RE.finditer(text):
+        value = " ".join(match.group(1).split()).strip()
+        if value:
+            constraints.append(f"default: {value}")
+    for match in CONSTRAINT_TOKEN_RE.finditer(text):
+        constraints.append(normalize_term(match.group(1)))
+    for match in OPERATION_RE.finditer(text):
+        constraints.append(f"operation: {normalize_term(match.group(1))}")
+    for match in UNIT_RE.finditer(text):
+        units.append(normalize_term(match.group(1)))
+    return {
+        "constraints": sorted(set(constraints)),
+        "units": sorted(set(units)),
+    }
+
+
+def heading_sections(text: str) -> list[tuple[str, str]]:
+    matches = list(HEADING_RE.finditer(text))
+    sections = []
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        sections.append((match.group(1), text[start:end]))
+    return sections
+
+
+def merge_document_clues(term: DomainTerm, text: str) -> None:
+    clues = extract_document_clues(text)
+    term.constraints = sorted(set([*term.constraints, *clues["constraints"]]))
+    term.units = sorted(set([*term.units, *clues["units"]]))
 
 
 def load_seed_terms(workspace: Path, profile: Profile) -> list[DomainTerm]:
@@ -64,7 +116,7 @@ def ingest_documents(workspace: Path, profile: Profile, ai_backend: AiBackend | 
             )
             evidence.append(doc_ev)
             doc_snippets.append({"evidence_id": doc_ev.id, "source": str(path), "text": text[:8000]})
-            for heading in re.findall(r"^#{1,3}\s+(.+)$", text, re.MULTILINE):
+            for heading, section_text in heading_sections(text):
                 canonical = normalize_term(heading)
                 if len(canonical) < 3:
                     continue
@@ -81,6 +133,7 @@ def ingest_documents(workspace: Path, profile: Profile, ai_backend: AiBackend | 
                         sources=[doc_ev.id],
                         confidence=0.75,
                     )
+                merge_document_clues(terms[term_id], section_text)
     for ai_term in backend.extract_terms(doc_snippets):
         term_id = ai_term.id or f"term_{slug(ai_term.canonical_name)}"
         if term_id in terms:

@@ -154,6 +154,8 @@ Validation:
 
 ### Sprint 7: Documentation And API Constraint Mining
 
+Status: implemented in `1.8.0`.
+
 Turn the API/documentation extraction papers into domain grounding.
 
 Deliverables:
