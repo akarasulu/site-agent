@@ -4,6 +4,15 @@
 
 ## Release Notes
 
+### 1.9.0
+
+- Refresh the numbered developer documentation suite for the current
+  research-backed crawler implementation state.
+- Add a research report index that links the paper-by-paper summaries and the
+  research technique implementation plan.
+- Link the research implementation plan and report index from the repository
+  README.
+
 ### 1.8.0
 
 - Extract deterministic documentation clues from local manuals: ranges,

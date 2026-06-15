@@ -6,10 +6,39 @@ The project core is product-agnostic. Target-specific behavior belongs in profil
 
 ## Documentation
 
-- [Release and packaging](docs/release.md): PyPI, pipx, Docker, and generated-target delivery.
-- [Config versioning design](contracts/config-versioning-design.md): save, diff, restore-plan, and restore guardrails.
-- [Generated automation surfaces](contracts/generated-automation-surfaces.md): Python API, MCP, and Ansible generation contracts.
-- [Interaction flow design](contracts/interaction-flow-design.md): staged add/edit/delete flow discovery.
+- [Overview](docs/00_OVERVIEW.md): project identity, goals, workflow, and
+  documentation map.
+- [Architecture](docs/01_ARCHITECTURE.md): system design, data flow,
+  boundaries, runtime safety, and observability.
+- [Technical inventory](docs/02_TECHNICAL_INVENTORY.md): CLI, modules,
+  schemas, scripts, fixtures, workflows, and artifacts.
+- [Development log](docs/03_DEVELOPMENT_LOG.md): architecture-relevant
+  decisions, sprint checkpoints, and validation evidence.
+- [Known limitations](docs/04_KNOWN_LIMITATIONS.md): implementation,
+  environment, validation, and safety risks.
+- [Roadmap](docs/05_ROADMAP.md): completed work, phase status, and near-term
+  priorities.
+- [Learning guide](docs/06_LEARNING_GUIDE.md): path from local setup to
+  advanced generated automation.
+- [Execution guide](docs/07_EXECUTION_GUIDE.md): install, environment,
+  workflow, validation, and release commands.
+- [Troubleshooting](docs/08_TROUBLESHOOTING.md): common failures and fixes.
+- [Validation checklist](docs/09_VALIDATION_CHECKLIST.md): checks for docs,
+  runtime, coverage, generated surfaces, config versioning, and release.
+- [Final report](docs/10_FINAL_REPORT.md): current state, metrics, risks, and
+  release-readiness summary.
+- [Research reports](docs/research/README.md): paper-by-paper crawler
+  technique summaries and implementation mapping.
+- [Release and packaging](docs/release.md): PyPI, pipx, Docker, and
+  generated-target delivery.
+- [Config versioning design](contracts/config-versioning-design.md): save,
+  diff, restore-plan, and restore guardrails.
+- [Generated automation surfaces](contracts/generated-automation-surfaces.md):
+  Python API, MCP, and Ansible generation contracts.
+- [Interaction flow design](contracts/interaction-flow-design.md): staged
+  add/edit/delete flow discovery.
+- [Research technique implementation plan](contracts/research-technique-implementation-plan.md):
+  implementation sprints from crawler research threads.
 
 ## Quick Start
 
