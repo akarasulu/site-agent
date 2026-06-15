@@ -4,6 +4,17 @@
 
 ## Release Notes
 
+### 1.2.0
+
+- Add a reusable evidence cache for crawl snapshots with selector-independent
+  page-family keys, template signatures, rendered/text hashes, evidence
+  density, and cache diffs.
+- Add a research-technique implementation plan that sequences evidence caching,
+  visual block extraction, adaptive crawl planning, documentation mining, and
+  drift-aware wrapper reuse.
+- Align runtime `site_agent.__version__` with package metadata for the `1.2.0`
+  sprint tag.
+
 ### 0.3.1
 
 - Fix generated MCP stdio servers to speak standard `Content-Length` framed JSON-RPC, which lets Codex and other MCP clients complete initialize and `tools/list` handshakes.
