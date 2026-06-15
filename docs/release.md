@@ -4,6 +4,15 @@
 
 ## Release Notes
 
+### 1.3.0
+
+- Add visual-block extraction to page graphs, grouping rendered elements by
+  geometry and semantic role without depending on raw selectors.
+- Mark repeated visual block patterns so settings rows, cards, and table-like
+  regions can be reused by later mapping and drift logic.
+- Attach visual block IDs to element node features while preserving the
+  existing page/form/element graph shape.
+
 ### 1.2.0
 
 - Add a reusable evidence cache for crawl snapshots with selector-independent

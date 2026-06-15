@@ -59,6 +59,8 @@ Validation:
 
 Build on the existing `page_graph` work.
 
+Status: implemented in `1.3.0`.
+
 Deliverables:
 
 * Cluster rendered elements into visual blocks using bounding boxes, role,
