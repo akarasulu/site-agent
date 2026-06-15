@@ -4,6 +4,14 @@
 
 ## Release Notes
 
+### 1.5.0
+
+- Wire evidence-cache artifacts into crawl runs and fast collection runs.
+- Add evidence-cache diffs to crawl comparison reports and crawl memory
+  workflows.
+- Feed cache/gain signals into crawl planning so plans explain page-family
+  discoveries, changed content, preservation states, and memory effects.
+
 ### 1.4.0
 
 - Add adaptive crawl gain scoring that combines missing ontology terms,

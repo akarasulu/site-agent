@@ -33,6 +33,7 @@ from site_agent.core.debug import build_debug_report
 from site_agent.core.debug import state_path
 from site_agent.core.doctor import doctor_checks, run_playwright_install
 from site_agent.core.drift.check import compare_snapshots
+from site_agent.core.evidence_cache import build_evidence_cache, diff_evidence_caches, load_evidence_cache, write_evidence_cache
 from site_agent.core.explorer import write_explorer
 from site_agent.core.form_classify import classify_forms
 from site_agent.core.ingest.docs import build_ontology_artifact
@@ -79,6 +80,13 @@ def load_latest_snapshot(profile_name: str) -> CrawlSnapshot:
 
 
 def latest_complete_collection_snapshot(profile_name: str) -> CrawlSnapshot | None:
+    snapshot_path = latest_complete_collection_snapshot_path(profile_name)
+    if snapshot_path is None:
+        return None
+    return snapshot_from_json(read_json(snapshot_path))
+
+
+def latest_complete_collection_snapshot_path(profile_name: str) -> Path | None:
     root = output_root(workspace(), profile_name)
     reports = sorted((root / "reports").glob("collection-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     for report_path in reports:
@@ -93,17 +101,27 @@ def latest_complete_collection_snapshot(profile_name: str) -> CrawlSnapshot | No
             continue
         snapshot_path = root / "crawl" / f"snapshot-{run_id}.json"
         if snapshot_path.exists():
-            return snapshot_from_json(read_json(snapshot_path))
+            return snapshot_path
     return None
 
 
 def load_synthesis_snapshot(profile_name: str) -> CrawlSnapshot:
-    complete_collection = latest_complete_collection_snapshot(profile_name)
-    if complete_collection is not None:
-        return complete_collection
-
     crawl_dir = output_root(workspace(), profile_name) / "crawl"
     paths = sorted(crawl_dir.glob("snapshot-*.json"), key=lambda p: p.stat().st_mtime)
+    latest_path = paths[-1] if paths else None
+    preferred_paths = [
+        path
+        for path in [
+            latest_json(crawl_dir, "snapshot-merged-*.json") if list(crawl_dir.glob("snapshot-merged-*.json")) else None,
+            latest_complete_collection_snapshot_path(profile_name),
+        ]
+        if path is not None
+    ]
+    if preferred_paths:
+        preferred = max(preferred_paths, key=lambda p: p.stat().st_mtime)
+        if latest_path is None or preferred.stat().st_mtime >= latest_path.stat().st_mtime:
+            return snapshot_from_json(read_json(preferred))
+
     snapshots: list[CrawlSnapshot] = []
     for path in paths:
         try:
@@ -156,9 +174,48 @@ def load_snapshot_path(path: Path) -> CrawlSnapshot:
     return snapshot_from_json(read_json(path))
 
 
+def evidence_cache_path(profile_name: str, run_id: str) -> Path:
+    return output_root(workspace(), profile_name) / "reports" / f"evidence-cache-{run_id}.json"
+
+
+def load_or_build_evidence_cache(profile_name: str, snapshot: CrawlSnapshot) -> dict:
+    path = evidence_cache_path(profile_name, snapshot.run_id)
+    if path.exists():
+        return load_evidence_cache(path)
+    cache = build_evidence_cache(snapshot)
+    write_evidence_cache(workspace(), profile_name, cache)
+    return read_json(path)
+
+
+def previous_evidence_cache(profile_name: str, current_run_id: str) -> dict | None:
+    reports_dir = output_root(workspace(), profile_name) / "reports"
+    caches = sorted(reports_dir.glob("evidence-cache-*.json"), key=lambda path: path.stat().st_mtime)
+    previous = [
+        path
+        for path in caches
+        if path.name != f"evidence-cache-{current_run_id}.json"
+    ]
+    if not previous:
+        return None
+    return load_evidence_cache(previous[-1])
+
+
+def cache_and_recent_diff(profile_name: str, snapshot: CrawlSnapshot) -> tuple[dict, dict | None]:
+    current_cache = load_or_build_evidence_cache(profile_name, snapshot)
+    previous_cache = previous_evidence_cache(profile_name, snapshot.run_id)
+    if previous_cache is None:
+        return current_cache, None
+    return current_cache, diff_evidence_caches(previous_cache, current_cache)
+
+
 def latest_tools(profile_name: str) -> list[dict]:
     path = output_root(workspace(), profile_name) / "mcp" / "tools.json"
     return read_json(path).get("tools", []) if path.exists() else []
+
+
+def latest_bindings(profile_name: str) -> dict:
+    path = output_root(workspace(), profile_name) / "mcp" / "adapter.bindings.json"
+    return read_json(path) if path.exists() else {"bindings": []}
 
 
 def latest_merge_report(profile_name: str) -> dict | None:
@@ -272,31 +329,14 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
     progress_total = previous_snapshot_total(profile.name)
     if getattr(args, "use_plan", None):
         crawl_plan = latest_crawl_plan(workspace(), profile.name) if args.use_plan == "latest" else read_json(Path(args.use_plan))
-        observed_plan_labels = [
-            item["label"]
-            for item in crawl_plan.get("prioritized_labels", [])
-            if item.get("label") and "observed_ui" in item.get("sources", [])
-        ]
-        generated_plan_labels = [
-            item["label"]
-            for item in crawl_plan.get("prioritized_labels", [])
-            if item.get("label") and "observed_ui" not in item.get("sources", [])
-        ]
-        max_planned = args.max_planned_labels if args.max_planned_labels is not None else len(observed_plan_labels) + 15
-        planned_labels = [*observed_plan_labels, *generated_plan_labels[:15]][:max_planned]
-        for target in crawl_plan.get("directional_targets", []):
-            branch = [str(label) for label in target.get("branch_path", []) if str(label).strip()]
-            labels = [str(label) for label in target.get("labels", []) if str(label).strip()]
-            if branch:
-                planned_paths.append(branch)
-            for label in labels:
-                if branch and label.lower() in {item.lower() for item in branch}:
-                    continue
-                planned_paths.append([*branch, label] if branch else [label])
-        planned_paths = planned_paths[: max_planned or len(planned_paths)]
-        deprioritized_labels = [str(label) for label in crawl_plan.get("deprioritized_labels", [])]
+        planned_labels, planned_paths, deprioritized_labels = planned_crawl_inputs(crawl_plan, args.max_planned_labels)
         progress_total = progress_total or len(planned_paths) or len(planned_labels) or None
-        print(f"Loaded crawl plan {crawl_plan.get('plan_id', args.use_plan)} with {len(planned_labels)} prioritized label(s) and {len(planned_paths)} directed path(s).")
+        print(
+            f"Loaded crawl plan {crawl_plan.get('plan_id', args.use_plan)} with "
+            f"{len(planned_labels)} prioritized label(s), "
+            f"{len(crawl_plan.get('coverage_preservation_labels', []))} coverage preservation label(s), "
+            f"and {len(planned_paths)} directed path(s)."
+        )
     if args.probe_budget_seconds is not None:
         profile.crawl.max_crawl_seconds = args.probe_budget_seconds
     if args.target_depth is not None:
@@ -345,12 +385,13 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
         inventory_path = output_root(workspace(), profile.name) / "reports" / f"site-tree-{utc_now().replace(':', '').replace('+', '_')}.json"
         write_json(inventory_path, site_inventory)
         inventory_paths = [node["path"] for node in site_inventory.get("nodes", []) if node.get("path")]
-        existing_path_keys = {tuple(path) for path in planned_paths}
+        existing_path_keys = {tuple(normalize_label(label) for label in path) for path in planned_paths}
         for path in inventory_paths:
-            key = tuple(path)
+            key = tuple(normalize_label(label) for label in path)
             if key not in existing_path_keys:
                 planned_paths.append(path)
                 existing_path_keys.add(key)
+        planned_paths = dedupe_planned_paths(planned_paths)
         print(
             f"Mandatory site inventory saved: {inventory_path} "
             f"({site_inventory.get('node_count', 0)} node(s), complete={site_inventory.get('coverage', {}).get('complete', False)})."
@@ -385,6 +426,7 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
     snapshot = redact_snapshot(snapshot, profile.crawl.redaction_patterns)
     path = output_root(workspace(), profile.name) / "crawl" / f"snapshot-{snapshot.run_id}.json"
     write_json(path, snapshot)
+    cache_path = write_evidence_cache(workspace(), profile.name, build_evidence_cache(snapshot))
     if crawl_plan:
         research_session = load_research_session(workspace(), profile)
         outcomes = directional_target_outcomes(crawl_plan, snapshot)
@@ -403,6 +445,7 @@ def cmd_crawl_run(args: argparse.Namespace) -> int:
         session_path = write_research_session(workspace(), profile, research_session)
         print(f"Updated research session with directional crawl outcomes: {session_path}")
     print(f"Saved crawl snapshot: {path}")
+    print(f"Saved evidence cache: {cache_path}")
     print(f"Found {len(snapshot.pages)} page(s), {len(snapshot.forms)} form(s), {len(snapshot.elements)} UI element(s), {len(snapshot.transitions)} transition(s).")
     print(f"Next: site-agent schema review --profile {profile.name}")
     return 0
@@ -426,10 +469,12 @@ def cmd_crawl_collect(args: argparse.Namespace) -> int:
     snapshot = redact_snapshot(snapshot, profile.crawl.redaction_patterns)
     path = output_root(workspace(), profile.name) / "crawl" / f"snapshot-{snapshot.run_id}.json"
     write_json(path, snapshot)
+    cache_path = write_evidence_cache(workspace(), profile.name, build_evidence_cache(snapshot))
     report_path = output_root(workspace(), profile.name) / "reports" / f"collection-{snapshot.run_id}.json"
     write_json(report_path, collection_report)
     captured_html = sum(1 for page in snapshot.pages if page.html_snapshot)
     print(f"Saved fast collection snapshot: {path}")
+    print(f"Saved evidence cache: {cache_path}")
     print(f"Saved exhaustive collection report: {report_path}")
     print(
         f"Collected {len(snapshot.pages)} page state(s), {len(snapshot.forms)} form(s), "
@@ -516,13 +561,146 @@ def normalize_label(value: str) -> str:
     return normalize_term(value)
 
 
+def dedupe_planned_paths(paths: list[list[str]]) -> list[list[str]]:
+    deduped_paths: list[list[str]] = []
+    seen_paths = set()
+    for path in paths:
+        clean_path = [" ".join(str(label).split()).strip() for label in path if str(label).strip()]
+        key = tuple(normalize_label(label) for label in clean_path)
+        if clean_path and key not in seen_paths:
+            deduped_paths.append(clean_path)
+            seen_paths.add(key)
+    return deduped_paths
+
+
+def planned_path_group_key(path: list[str]) -> tuple[str, ...]:
+    normalized = [normalize_label(label) for label in path if normalize_label(label)]
+    if len(normalized) >= 2:
+        return tuple(normalized[:2])
+    return tuple(normalized[:1])
+
+
+def group_planned_paths(paths: list[list[str]]) -> list[list[list[str]]]:
+    groups: dict[tuple[str, ...], list[list[str]]] = {}
+    order: list[tuple[str, ...]] = []
+    for path in dedupe_planned_paths(paths):
+        key = planned_path_group_key(path)
+        if not key:
+            continue
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(path)
+    return [groups[key] for key in order]
+
+
+def interleave_group_lists(*group_lists: list[list[list[str]]]) -> list[list[list[str]]]:
+    interleaved: list[list[list[str]]] = []
+    max_groups = max((len(groups) for groups in group_lists), default=0)
+    for index in range(max_groups):
+        for groups in group_lists:
+            if index < len(groups):
+                interleaved.append(groups[index])
+    return interleaved
+
+
+def round_robin_planned_paths(groups: list[list[list[str]]], limit: int | None = None) -> list[list[str]]:
+    result: list[list[str]] = []
+    positions = [0 for _ in groups]
+    seen = set()
+    while groups:
+        progressed = False
+        for index, group in enumerate(groups):
+            if positions[index] >= len(group):
+                continue
+            path = group[positions[index]]
+            positions[index] += 1
+            key = tuple(normalize_label(label) for label in path)
+            if key not in seen:
+                result.append(path)
+                seen.add(key)
+                progressed = True
+                if limit is not None and len(result) >= limit:
+                    return result
+        if not progressed:
+            break
+    return result
+
+
+def planned_crawl_inputs(crawl_plan: dict, max_planned_labels: int | None = None) -> tuple[list[str], list[list[str]], list[str]]:
+    observed_plan_labels = [
+        item["label"]
+        for item in crawl_plan.get("prioritized_labels", [])
+        if item.get("label") and "observed_ui" in item.get("sources", [])
+    ]
+    generated_plan_labels = [
+        item["label"]
+        for item in crawl_plan.get("prioritized_labels", [])
+        if item.get("label") and "observed_ui" not in item.get("sources", [])
+    ]
+    preservation_plan_labels = [
+        item["label"]
+        for item in crawl_plan.get("coverage_preservation_labels", [])
+        if item.get("label")
+    ]
+    max_planned = max_planned_labels if max_planned_labels is not None else len(observed_plan_labels) + len(preservation_plan_labels) + 15
+    planned_labels: list[str] = []
+    seen_labels = set()
+    for label in [*observed_plan_labels, *preservation_plan_labels, *generated_plan_labels[:15]]:
+        key = normalize_label(label)
+        if key not in seen_labels:
+            planned_labels.append(label)
+            seen_labels.add(key)
+        if len(planned_labels) >= max_planned:
+            break
+
+    directional_groups: list[list[list[str]]] = []
+    for target in crawl_plan.get("directional_targets", []):
+        branch = [str(label) for label in target.get("branch_path", []) if str(label).strip()]
+        labels = [str(label) for label in target.get("labels", []) if str(label).strip()]
+        group: list[list[str]] = []
+        if branch:
+            group.append(branch)
+        branch_keys = {label.lower() for label in branch}
+        for label in labels:
+            if branch and label.lower() in branch_keys:
+                continue
+            group.append([*branch, label] if branch else [label])
+        if group:
+            directional_groups.append(dedupe_planned_paths(group))
+
+    preservation_paths: list[list[str]] = []
+    for item in crawl_plan.get("coverage_preservation_labels", []):
+        path_label = str(item.get("path") or item.get("label") or "")
+        path = [part.strip() for part in path_label.split(">") if part.strip()]
+        if path:
+            preservation_paths.append(path)
+    preservation_groups = group_planned_paths(preservation_paths)
+    planned_paths = round_robin_planned_paths(
+        interleave_group_lists(directional_groups, preservation_groups),
+        max_planned,
+    )
+    deprioritized_labels = [str(label) for label in crawl_plan.get("deprioritized_labels", [])]
+    return planned_labels, planned_paths, deprioritized_labels
+
+
 def cmd_crawl_plan(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
     snapshot = load_latest_snapshot(profile.name)
     _, schema = latest_schema(output_root(workspace(), profile.name) / "schema")
     memory = crawl_memory(profile.name) or {}
     memory["research_session"] = load_research_session(workspace(), profile)
-    plan = build_crawl_plan(profile, snapshot, schema, get_ai_backend(), args.max_terms, memory)
+    evidence_cache, evidence_cache_diff = cache_and_recent_diff(profile.name, snapshot)
+    plan = build_crawl_plan(
+        profile,
+        snapshot,
+        schema,
+        get_ai_backend(),
+        args.max_terms,
+        memory,
+        evidence_cache=evidence_cache,
+        evidence_cache_diff=evidence_cache_diff,
+    )
     path = write_crawl_plan(workspace(), profile, plan)
     research_session = memory["research_session"]
     research_session["weak_areas"] = plan.get("target_terms", [])
@@ -544,7 +722,14 @@ def cmd_crawl_plan(args: argparse.Namespace) -> int:
         f"{plan['summary']['missing_terms']} missing term(s), "
         f"{plan['summary']['prioritized_labels']} prioritized label(s), "
         f"{plan['summary']['noise_labels']} deprioritized label(s), "
-        f"{plan['summary'].get('directional_targets', 0)} directional target(s)."
+        f"{plan['summary'].get('directional_targets', 0)} directional target(s), "
+        f"{plan['summary'].get('coverage_preservation_labels', 0)} coverage preservation label(s), "
+        f"{plan['summary'].get('crawl_gain_candidates', 0)} gain candidate(s)."
+    )
+    print(
+        "Page graph: "
+        f"{plan['summary'].get('page_graph_nodes', 0)} node(s), "
+        f"{plan['summary'].get('page_graph_edges', 0)} edge(s)."
     )
     if plan.get("directional_targets"):
         print("Directional targets:")
@@ -552,6 +737,10 @@ def cmd_crawl_plan(args: argparse.Namespace) -> int:
             branch = " > ".join(item.get("branch_path", [])) or "(unknown branch)"
             labels = ", ".join(item.get("labels", [])[:6])
             print(f"- {branch} ({item['priority']:.2f}/{item['confidence']:.2f}) labels={labels}")
+    if plan.get("coverage_preservation_labels"):
+        print("Coverage preservation labels:")
+        for item in plan["coverage_preservation_labels"][: args.limit]:
+            print(f"- {item['label']} ({item['score']:.2f}) path={item.get('path', item['label'])}")
     if plan["prioritized_labels"]:
         print("Top planned labels:")
         for item in plan["prioritized_labels"][: args.limit]:
@@ -586,6 +775,12 @@ def cmd_crawl_compare(args: argparse.Namespace) -> int:
     previous_schema = schema_for_run(profile.name, previous.run_id)
     current_schema = schema_for_run(profile.name, current.run_id)
     comparison = compare_coverage(profile, previous, current, previous_schema, current_schema, None, latest_tools(profile.name))
+    previous_cache = load_or_build_evidence_cache(profile.name, previous)
+    current_cache = load_or_build_evidence_cache(profile.name, current)
+    cache_diff = diff_evidence_caches(previous_cache, current_cache)
+    comparison["evidence_cache"] = cache_diff
+    comparison["summary"]["new_page_families"] = len(cache_diff["added_cache_keys"])
+    comparison["summary"]["changed_page_families"] = len(cache_diff["changed_content"])
     path = output_root(workspace(), profile.name) / "reports" / f"coverage-compare-{previous.run_id}-to-{current.run_id}.json"
     write_json(path, comparison)
     memory_path = update_crawl_memory(workspace(), profile, comparison, latest_merge_report(profile.name))
@@ -598,6 +793,8 @@ def cmd_crawl_compare(args: argparse.Namespace) -> int:
         f"{summary['new_forms']} new form(s), "
         f"{summary['new_ui_elements']} new UI element(s), "
         f"{summary['new_mapped_terms']} new mapped term(s), "
+        f"{summary['new_page_families']} new page family/families, "
+        f"{summary['changed_page_families']} changed page family/families, "
         f"{summary['widget_state_growth']} widget-state growth."
     )
     print(f"Next: site-agent quality check --profile {profile.name}")
@@ -1193,6 +1390,7 @@ def cmd_config_coverage(args: argparse.Namespace) -> int:
         snapshot,
         schema=schema,
         tools=latest_tools(profile.name),
+        bindings=latest_bindings(profile.name),
         settings_snapshot=settings_snapshot,
         previous_snapshot=previous,
     )

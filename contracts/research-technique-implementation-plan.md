@@ -98,23 +98,41 @@ Validation:
 * Existing navigation planning tests continue to pass.
 * Minor version bump and tag `v1.4.0`.
 
-### Sprint 4: Documentation And API Constraint Mining
+### Sprint 4: Crawl Workflow Cache/Gain Wiring
 
-Turn the API/documentation extraction papers into domain grounding.
+Status: implemented in `1.5.0`.
 
 Deliverables:
 
-* Extract constraints, aliases, units, and operation verbs from local docs.
-* Tie generated Python API, MCP, and Ansible descriptions to evidence IDs.
-* Mark sparse or conflicting documentation as review-required.
+* Write evidence-cache artifacts after crawl and fast collection passes.
+* Compare caches during `crawl compare`.
+* Feed cache/gain signals into `crawl plan` without replacing existing
+  ontology, observed UI, AI directional, or preservation signals.
 
 Validation:
 
-* Golden tests for term/constraint extraction from sample manuals.
-* Generated surface tests confirm doc evidence is present.
+* CLI flow tests for emitted cache artifacts and cache diff reporting.
+* Crawl-plan tests for cache-driven gain signals.
 * Minor version bump and tag `v1.5.0`.
 
-### Sprint 5: Drift-Aware Wrapper Reuse
+### Sprint 5: Workflow Hardening And Provenance Preservation
+
+Deliverables:
+
+* Capture visual/accessibility browser metadata for reconciled forms.
+* Bound optional AI enrichment calls with explicit budgets.
+* Preserve source form/field provenance when generated capabilities collapse
+  duplicate semantic forms.
+* Improve configuration coverage with adapter bindings and internal sentinel
+  field filtering.
+
+Validation:
+
+* Targeted unit tests for AI budgets, config coverage, capability provenance,
+  and navigation planning.
+* Minor version bump and tag `v1.6.0`.
+
+### Sprint 6: Drift-Aware Wrapper Reuse
 
 Use learned templates to keep contracts stable through UI changes.
 
@@ -128,7 +146,23 @@ Validation:
 
 * Drift fixture with selector/layout churn and stable semantics.
 * Contract diff confirms no public breaking changes for adapter-only drift.
-* Minor version bump and tag `v1.6.0`.
+* Minor version bump and tag `v1.7.0`.
+
+### Sprint 7: Documentation And API Constraint Mining
+
+Turn the API/documentation extraction papers into domain grounding.
+
+Deliverables:
+
+* Extract constraints, aliases, units, and operation verbs from local docs.
+* Tie generated Python API, MCP, and Ansible descriptions to evidence IDs.
+* Mark sparse or conflicting documentation as review-required.
+
+Validation:
+
+* Golden tests for term/constraint extraction from sample manuals.
+* Generated surface tests confirm doc evidence is present.
+* Minor version bump and tag `v1.8.0`.
 
 ## Cache Strategy
 
@@ -148,5 +182,4 @@ The cache should eventually be written after every crawl pass as:
 output/<profile>/reports/evidence-cache-<run_id>.json
 ```
 
-Sprint 1 provides the reusable module. Later sprints can wire it into crawl
-commands once the existing dirty CLI/crawl changes are settled.
+Sprint 4 wires this artifact into crawl commands and comparison reports.

@@ -4,9 +4,12 @@ import re
 from pathlib import Path
 
 from site_agent.core.ai.backends import AiBackend
+from site_agent.core.crawl_gain import gain_summary, score_crawl_candidates
 from site_agent.core.debug import build_debug_report, state_path
+from site_agent.core.evidence_cache import EvidenceCache
 from site_agent.core.ingest.docs import normalize_term
 from site_agent.core.models import CrawlSnapshot, DomainTerm, MappedSchema, UiElement, new_id, utc_now
+from site_agent.core.page_graph import build_page_graph, coverage_preservation_labels
 from site_agent.core.profiles import Profile, output_root
 from site_agent.core.storage import latest_json, read_json, write_json
 
@@ -208,8 +211,12 @@ def build_crawl_plan(
     ai_backend: AiBackend,
     max_terms: int = 20,
     memory: dict | None = None,
+    evidence_cache: EvidenceCache | dict | None = None,
+    evidence_cache_diff: dict | None = None,
 ) -> dict:
     debug_report = build_debug_report(snapshot, schema)
+    page_graph = build_page_graph(snapshot)
+    preservation_labels = coverage_preservation_labels(snapshot)
     missing_terms = plan_missing_terms(schema, max_terms)
     observed_labels = observed_navigation_labels(snapshot)
     all_candidates: dict[str, dict] = {}
@@ -304,6 +311,72 @@ def build_crawl_plan(
                 existing.setdefault("branch_path", target.get("branch_path", []))
                 existing.setdefault("reason", target.get("reason", ""))
 
+    for item in preservation_labels:
+        label = item["label"]
+        normalized = normalize_term(label)
+        memory_boost = 0.08 if normalized in promoted else -0.18 if normalized in demoted else 0.0
+        score = round(min(0.92, max(0.12, float(item["score"]) + memory_boost)), 3)
+        existing = all_candidates.get(normalized)
+        concepts = ["coverage preservation"]
+        if existing is None or score > existing["score"]:
+            all_candidates[normalized] = {
+                "label": label,
+                "score": score,
+                "concepts": concepts,
+                "sources": ["coverage_preservation"],
+                "memory": "promoted" if normalized in promoted else "demoted" if normalized in demoted else "neutral",
+                "branch_path": item.get("state_path", []),
+                "reason": item.get("reason", ""),
+                "coverage_signals": item.get("signals", {}),
+            }
+        else:
+            existing.setdefault("sources", [])
+            if "coverage_preservation" not in existing["sources"]:
+                existing["sources"].append("coverage_preservation")
+            for concept in concepts:
+                if concept not in existing.get("concepts", []):
+                    existing.setdefault("concepts", []).append(concept)
+            existing.setdefault("coverage_signals", item.get("signals", {}))
+
+    gain_candidates = score_crawl_candidates(
+        snapshot,
+        missing_terms,
+        cache=evidence_cache,
+        cache_diff=evidence_cache_diff,
+        memory=memory,
+        observed_labels=observed_labels,
+    )
+    for candidate in gain_candidates:
+        normalized = normalize_term(candidate["label"])
+        gain_score = float(candidate["score"])
+        gain_sources = ["crawl_gain", *candidate.get("sources", [])]
+        existing = all_candidates.get(normalized)
+        if existing is None:
+            all_candidates[normalized] = {
+                "label": candidate["label"],
+                "score": round(gain_score, 3),
+                "concepts": list(candidate.get("concepts", [])),
+                "sources": gain_sources,
+                "memory": candidate.get("memory", "neutral"),
+                "reason": candidate.get("reason", ""),
+                "gain_score": round(gain_score, 3),
+                "gain_signals": candidate.get("signals", {}),
+            }
+            continue
+        existing["score"] = round(max(float(existing["score"]), gain_score), 3)
+        for source in gain_sources:
+            if source not in existing.get("sources", []):
+                existing.setdefault("sources", []).append(source)
+        for concept in candidate.get("concepts", []):
+            if concept not in existing.get("concepts", []):
+                existing.setdefault("concepts", []).append(concept)
+        if candidate.get("memory") == "demoted":
+            existing["memory"] = "demoted"
+        elif existing.get("memory") == "neutral" and candidate.get("memory") == "promoted":
+            existing["memory"] = "promoted"
+        existing["gain_score"] = round(gain_score, 3)
+        existing["gain_signals"] = candidate.get("signals", {})
+
     prioritized = sorted(
         [item for item in all_candidates.values() if item["score"] > 0],
         key=lambda item: (item.get("memory") == "demoted", -item["score"], item["label"]),
@@ -312,6 +385,8 @@ def build_crawl_plan(
     for state in debug_report.get("likely_noise_states", []):
         if state.get("state_path"):
             noisy_labels.append(title_label(state["state_path"][-1].replace("-", " ")))
+    cache_diff = evidence_cache_diff or {}
+    gain_report = gain_summary(gain_candidates)
 
     return {
         "plan_id": new_id("plan"),
@@ -328,9 +403,20 @@ def build_crawl_plan(
             "memory_demoted_labels": len(demoted),
             "memory_disproven_labels": len(disproven),
             "directional_targets": len(directed_targets),
+            "coverage_preservation_labels": len(preservation_labels),
+            "page_graph_nodes": page_graph["summary"]["nodes"],
+            "page_graph_edges": page_graph["summary"]["edges"],
+            "page_graph_roles": page_graph["summary"]["role_counts"],
+            "crawl_gain_candidates": gain_report["candidates"],
+            "crawl_gain_sources": gain_report["source_counts"],
+            "evidence_cache_new_page_families": len(cache_diff.get("added_cache_keys", [])),
+            "evidence_cache_changed_page_families": len(cache_diff.get("changed_content", [])),
         },
         "target_terms": target_terms,
         "directional_targets": directed_targets,
+        "coverage_preservation_labels": preservation_labels,
+        "crawl_gain_summary": gain_report,
+        "page_graph_summary": page_graph["summary"],
         "prioritized_labels": prioritized[:60],
         "deprioritized_labels": sorted(set(noisy_labels)),
         "debug_summary": debug_report["summary"],
