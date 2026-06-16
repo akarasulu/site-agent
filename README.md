@@ -290,13 +290,19 @@ try requests:
 site-agent api serve --profile my-site
 ```
 
-Build or serve the generated explorer portal when you want Swagger, Postman,
-Python, MCP, Ansible, and audit links in one browser view:
+Build or serve the generated explorer portal when you want a role-based browser
+view for API consumers:
 
 ```bash
 site-agent explorer build --profile my-site
 site-agent explorer serve --profile my-site
 ```
+
+The explorer defaults to Use mode with Swagger, Postman, and copy-ready
+operation examples. Automate mode focuses on Python, MCP, and Ansible. Audit
+mode keeps UI evidence and adapter context collapsed until a reviewer expands
+it. Debug mode exposes summary, artifact routing, and capability projection
+data.
 
 The bridge exposes `GET /health`, `GET /openapi.json`, and
 `POST /methods/<generated_method>`. Request bodies use this shape:
@@ -373,7 +379,9 @@ output/my-site/explorer/swagger.html
 
 Use `site-agent api serve --profile my-site` to run the local bridge behind
 those docs, and `site-agent explorer serve --profile my-site` to open the
-consumer-facing portal.
+consumer-facing portal. The portal includes Use, Automate, Audit, and Debug
+modes plus generated curl, Python, MCP, Ansible, and Postman examples for the
+selected operation.
 
 ### MCP Server
 

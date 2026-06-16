@@ -1,7 +1,7 @@
 # Final Report
 
 This report summarizes the current engineering state of `site-agent` after the
-research-backed implementation and documentation refresh through `v1.14.1`.
+research-backed implementation and documentation refresh through `v1.15.0`.
 
 ## Executive Summary
 
@@ -25,7 +25,7 @@ validation profiles rather than reusable core code.
 | Generated surfaces | MCP, Python API, local API bridge, Ansible, OpenAPI/Postman docs, generated surface docs, explorer portal, MCP import, contract diffing, runtime serving, and MCP-build Python API synchronization are implemented. |
 | Configuration versioning | Save, coverage, diff, restore-plan, restore-readiness, restore, and verification paths exist. |
 | Research-backed crawl intelligence | Evidence cache, visual page graph, adaptive gain scoring, drift-aware adapter reuse, and documentation clue mining are implemented. |
-| Explorer portal | Generated explorers default to consumer-facing API docs, Swagger, Python, MCP, Ansible, and Postman tabs, with dense evidence collapsed by default and retained under Audit. |
+| Explorer portal | Generated explorers default to role-based Use, Automate, Audit, and Debug modes with selected-operation examples and dense evidence collapsed by default. |
 | API documentation bundle | Generated profiles can emit OpenAPI 3.1, Postman collection/environment, quickstart, Python API, MCP, Ansible, and API reference Markdown artifacts. |
 | Local API bridge | `site-agent api serve` exposes generated methods through local HTTP for Swagger UI and Postman execution. |
 | Validation assets | Mock app, benchmark pack, router example, unit tests, integration tests, CI, and smoke scripts exist. |
@@ -89,6 +89,6 @@ See [Known Limitations](04_KNOWN_LIMITATIONS.md) for the detailed list.
 ## Release Readiness Conclusion
 
 The architecture documentation is complete enough for developer onboarding,
-implementation planning, and release-gate review at `v1.14.1`. Before a public
+implementation planning, and release-gate review at `v1.15.0`. Before a public
 release, rerun browser-ready smoke checks, benchmark validation, generated
 surface checks, and secret/artifact review against the final release diff.

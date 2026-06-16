@@ -3,6 +3,29 @@
 All notable repository checkpoints are recorded here. Tags use semantic
 versioning and sprint records under `docs/sprints/` capture validation evidence.
 
+## 1.15.0 - 2026-06-16
+
+### Added
+
+* Added explorer role modes for Use, Automate, Audit, and Debug workflows.
+* Added schema-backed examples for selected generated operations, including
+  HTTP request bodies, curl, Python, MCP, Ansible, and Postman guidance.
+* Added selectable operation rows so users can pivot from method lists to
+  concrete examples without entering the dense audit browser.
+* Added a Debug view for summary, artifact routing, and capability projection
+  inspection.
+* Added Postman Web and official import-documentation links to the explorer and
+  generated Postman artifact helper pages.
+
+### Validation
+
+* `python -m pytest tests/unit/test_explorer.py tests/unit/test_cli_flow.py::test_cli_fixture_flow`
+* `python -m py_compile site_agent/core/explorer.py site_agent/cli.py`
+* Extracted explorer template JavaScript and checked it with `node --check`.
+* Browser smoke against the regenerated ZTE explorer confirmed role modes,
+  mode-aware tabs, examples, Postman links, Debug view, collapsed Audit
+  evidence, and mobile layout without horizontal overflow.
+
 ## 1.14.1 - 2026-06-16
 
 ### Fixed

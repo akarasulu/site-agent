@@ -12,7 +12,7 @@ current repository state.
 | Crawl and extraction | Playwright crawl, fixture crawl, Crawl4AI backend, static HTML extraction, JS state exploration, dynamic flow probing, and read-only fact extraction exist. |
 | Domain grounding | Ontology seed loading, profile doc ingestion, AI-assisted term extraction, and research session artifacts exist. |
 | Semantic alignment | Lexical plus AI-assisted alignment, confidence bands, review queue, approve/reject/edit, and reviewed schema writing exist. |
-| Generated surfaces | MCP, Python API, local API bridge, Ansible collection, OpenAPI/Postman docs, generated surface docs, explorer portal, MCP import, contract diff, adapter refresh commands, and MCP-build Python API synchronization exist. |
+| Generated surfaces | MCP, Python API, local API bridge, Ansible collection, OpenAPI/Postman docs, generated surface docs, role-based explorer portal, MCP import, contract diff, adapter refresh commands, and MCP-build Python API synchronization exist. |
 | Configuration versioning | Settings repo init, snapshots, commit/tag, diff, restore plan, readiness, restore dry-run/apply path, verification, and coverage exist. |
 | Quality and drift | Drift reports, adapter reuse analysis, quality gates, coverage comparison, crawl memory, page graph support, and benchmark pack exist. |
 | Research-backed crawl intelligence | Evidence cache, visual block grouping, adaptive crawl gain scoring, cache/gain workflow wiring, and documentation clue mining exist. |
@@ -70,8 +70,9 @@ Status: implemented, with maturity work remaining.
   tools/API spec.
 * Ansible collection and Ansible spec are generated.
 * MCP import, diff, serve, call, and refresh commands exist.
-* The generated explorer defaults to a consumer-facing API portal and keeps the
-  dense evidence browser under Audit.
+* The generated explorer defaults to a role-based consumer API portal with
+  generated operation examples and keeps the dense evidence browser under
+  Audit.
 
 Future work:
 

@@ -206,7 +206,9 @@ should delegate to generated Python API behavior where practical.
 Generated OpenAPI, Postman, quickstart, Python, MCP, and Ansible artifacts
 document the selector-free local API bridge and generated automation surfaces.
 The generated explorer publishes those artifacts as a consumer-facing portal
-while retaining the evidence-heavy UI/adapter browser under its Audit tab.
+with Use, Automate, Audit, and Debug modes. Use and Automate expose generated
+operation examples, while Audit retains the evidence-heavy UI/adapter browser
+for reviewers.
 
 The local API bridge lives in `site_agent/core/synthesize/http_api.py` and is
 served by `site-agent api serve`. It exposes health, OpenAPI, and generated

@@ -7,7 +7,7 @@ documentation risks. It should stay honest enough to support release decisions.
 
 | Limitation | Impact | Mitigation |
 | --- | --- | --- |
-| An already installed editable package may still expose stale metadata until reinstalled. | `importlib.metadata.version("site-agent")` can lag source version in externally managed Python environments. | Refresh in a virtual environment or with `pipx`; source `pyproject.toml` and `site_agent.__version__` agree at `1.14.1`. |
+| An already installed editable package may still expose stale metadata until reinstalled. | `importlib.metadata.version("site-agent")` can lag source version in externally managed Python environments. | Refresh in a virtual environment or with `pipx`; source `pyproject.toml` and `site_agent.__version__` agree at `1.15.0`. |
 | Crawl4AI is pinned to `0.8.9`. | Newer Python interpreters or native dependencies may fail install or runtime checks. | Prefer Python 3.11-3.13 for Crawl4AI and run `site-agent doctor`. |
 | Generated target packages are not distributed through the core PyPI package. | Operators need a separate generated workspace or bundle. | Use `site-agent package build` or separate target repositories. |
 

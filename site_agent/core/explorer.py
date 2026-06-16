@@ -246,6 +246,8 @@ def build_postman_viewer(title: str, key: str, raw_href: str) -> str:
 <p>Use this generated Postman {noun} with the local site-agent API bridge.</p>
 <div class="actions">
   <a class="button" href="{html.escape(raw_name)}?raw=1" download>Download {html.escape(title)}</a>
+  <a class="button secondary" href="https://web.postman.co/" target="_blank" rel="noreferrer">Open Postman Web</a>
+  <a class="button secondary" href="https://learning.postman.com/docs/getting-started/importing-and-exporting/importing-data/" target="_blank" rel="noreferrer">Postman Import Docs</a>
   <a class="button secondary" href="../index.html">Back To Explorer</a>
 </div>
 <h2>Import Steps</h2>
@@ -449,6 +451,8 @@ def build_explorer_data(profile: Profile, snapshot: CrawlSnapshot, root: Path) -
                 "description": method.get("description") or tool.get("description", ""),
                 "risk_level": method.get("risk_level") or tool.get("risk_level"),
                 "args": sorted((method.get("args", {}).get("properties") or {}).keys()),
+                "arg_schema": method.get("args", {}),
+                "return_schema": method.get("return_schema", {}),
                 "backing_tool": method.get("backing_tool") or name,
                 "source_type": tool.get("source_type"),
                 "reasoning_summary": tool.get("reasoning_summary"),
@@ -520,9 +524,12 @@ body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, Bl
 header { min-height:58px; display:flex; align-items:center; gap:18px; padding:8px 20px; border-bottom:1px solid var(--line); background:#fff; position:sticky; top:0; z-index:5; }
 h1 { font-size:18px; margin:0; }
 .meta { color:var(--muted); font-size:13px; }
-.tabs { display:flex; flex-wrap:wrap; gap:6px; margin-left:auto; }
-.tab { background:#fff; border:1px solid var(--line); border-radius:6px; color:var(--ink); cursor:pointer; font-size:13px; padding:7px 10px; }
-.tab:hover, .tab.active { background:#eaf3fb; border-color:#9bc5e7; color:#0d5d9f; }
+.modes, .tabs { display:flex; flex-wrap:wrap; gap:6px; }
+.modes { margin-left:auto; }
+.mode, .tab, .small-button { background:#fff; border:1px solid var(--line); border-radius:6px; color:var(--ink); cursor:pointer; font-size:13px; padding:7px 10px; }
+.small-button { padding:5px 8px; }
+.mode:hover, .mode.active, .tab:hover, .tab.active, .small-button:hover { background:#eaf3fb; border-color:#9bc5e7; color:#0d5d9f; }
+.mode.active { background:#1267b1; border-color:#1267b1; color:#fff; }
 .load-error { margin:18px; padding:14px; border:1px solid #e3aaaa; background:#fff4f4; color:#8d2929; border-radius:8px; }
 .shell { --nav-width:330px; --detail-width:420px; display:grid; grid-template-columns: var(--nav-width) 10px minmax(420px, 1fr) 10px var(--detail-width); min-height:calc(100vh - 58px); }
 .shell.portal-mode { display:block; }
@@ -558,6 +565,10 @@ summary { cursor:pointer; font-weight:650; font-size:14px; }
 .doc-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; margin:14px 0; }
 .doc-card { border:1px solid var(--line); border-radius:8px; padding:12px; background:#fbfcfe; }
 .doc-card b { display:block; margin-bottom:6px; }
+.callout { border:1px solid #b8d6ec; border-radius:8px; background:#f2f8fd; padding:12px; margin:14px 0; }
+.example-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-top:12px; }
+.example-card { border:1px solid var(--line); border-radius:8px; background:#fff; padding:12px; min-width:0; }
+.example-card b { display:block; margin-bottom:8px; }
 .actions { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
 .button-link { align-items:center; background:#1267b1; border:1px solid #1267b1; border-radius:6px; color:#fff; display:inline-flex; font-size:13px; min-height:34px; padding:7px 11px; text-decoration:none; }
 .button-link.secondary { background:#fff; color:#1267b1; }
@@ -604,12 +615,18 @@ details.evidence summary { color:#1267b1; cursor:pointer; font-weight:650; }
 .evidence-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-height:220px; overflow:auto; }
 .evidence-list code { background:#fff; border:1px solid var(--line); border-radius:999px; font-size:12px; padding:2px 6px; }
 pre { white-space:pre-wrap; word-break:break-word; background:#f7f9fc; border:1px solid var(--line); border-radius:6px; padding:10px; font-size:12px; }
-@media (max-width: 1100px) { .shell { display:block; } aside, section.detail { border:0; } .splitter, .canvas-splitter { display:none; } .canvas { display:block; } .canvas > .page, .canvas > .anno-list { margin:0 0 16px; } .doc-grid { grid-template-columns:1fr; } }
+@media (max-width: 1100px) { header { align-items:flex-start; flex-direction:column; gap:8px; } .modes { margin-left:0; } .shell { display:block; } aside, section.detail { border:0; } .splitter, .canvas-splitter { display:none; } .canvas { display:block; } .canvas > .page, .canvas > .anno-list { margin:0 0 16px; } .doc-grid, .example-grid { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
 <header>
   <h1>Generated API Explorer</h1><span class="meta" id="profile"></span>
+  <nav class="modes" aria-label="Explorer modes">
+    <button class="mode" type="button" data-mode="use" onclick="setMode('use')">Use</button>
+    <button class="mode" type="button" data-mode="automate" onclick="setMode('automate')">Automate</button>
+    <button class="mode" type="button" data-mode="audit" onclick="setMode('audit')">Audit</button>
+    <button class="mode" type="button" data-mode="debug" onclick="setMode('debug')">Debug</button>
+  </nav>
   <nav class="tabs" aria-label="Explorer sections">
     <button class="tab" type="button" data-tab="overview" onclick="setTab('overview')">Overview</button>
     <button class="tab" type="button" data-tab="api" onclick="setTab('api')">API</button>
@@ -618,6 +635,7 @@ pre { white-space:pre-wrap; word-break:break-word; background:#f7f9fc; border:1p
     <button class="tab" type="button" data-tab="ansible" onclick="setTab('ansible')">Ansible</button>
     <button class="tab" type="button" data-tab="postman" onclick="setTab('postman')">Postman</button>
     <button class="tab" type="button" data-tab="audit" onclick="setTab('audit')">Audit</button>
+    <button class="tab" type="button" data-tab="debug" onclick="setTab('debug')">Debug</button>
   </nav>
 </header>
 <div class="shell" id="shell">
@@ -630,8 +648,10 @@ pre { white-space:pre-wrap; word-break:break-word; background:#f7f9fc; border:1p
 <script>
 const $ = (id) => document.getElementById(id);
 let DATA, selected, currentTab = localStorage.getItem('siteAgentExplorer.tab') || 'overview';
+let currentMode = localStorage.getItem('siteAgentExplorer.mode') || 'use';
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function risk(r){ return `<span class="risk ${esc(r)}">${esc(r)}</span>`; }
+function jsString(value){ return JSON.stringify(String(value ?? '')).replace(/"/g, '&quot;'); }
 function evidenceDetails(ids, emptyLabel='none'){
   const values = (ids || []).filter(Boolean);
   if (!values.length) return `<span class="meta">${esc(emptyLabel)}</span>`;
@@ -642,6 +662,39 @@ function evidenceDetails(ids, emptyLabel='none'){
 function shellQuote(s){
   const value = String(s ?? '');
   return /^[A-Za-z0-9_./:-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+function profileSlug(){
+  return DATA.profile.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'generated';
+}
+function sampleValue(name, schema={}){
+  if (Array.isArray(schema.enum) && schema.enum.length) return schema.enum[0];
+  const type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
+  if (type === 'boolean') return false;
+  if (type === 'integer' || type === 'number') return 0;
+  if (type === 'array') return [];
+  if (type === 'object') return {};
+  return `example_${name}`;
+}
+function sampleArgs(method){
+  const properties = method.arg_schema?.properties || {};
+  return (method.args || []).reduce((args, name) => {
+    args[name] = sampleValue(name, properties[name] || {});
+    return args;
+  }, {});
+}
+function methodRequest(method){
+  return {args: sampleArgs(method), browser: false, mode: 'dry-run'};
+}
+function methodCallArgs(method){
+  const args = sampleArgs(method);
+  return Object.entries(args).map(([name, value]) => `${name}=${JSON.stringify(value)}`).join(', ');
+}
+function ansibleModuleFor(method){
+  return (DATA.ansible?.modules || []).find(module => String(module.name || '').endsWith(method.name));
+}
+function selectedMethod(){
+  selected = selected || DATA.methods[0];
+  return selected;
 }
 const layoutState = {
   navWidth: Number(localStorage.getItem('siteAgentExplorer.navWidth')) || 330,
@@ -810,10 +863,18 @@ function portalCards(){
 function commandBlock(lines){
   return `<div class="cmd">${esc(lines.join('\n'))}</div>`;
 }
-function operationRows(limit=14){
+function codeBlock(value){
+  return `<pre>${esc(value)}</pre>`;
+}
+function selectPortalMethod(name){
+  selected = DATA.methods.find(method => method.name === name) || DATA.methods[0];
+  renderView();
+}
+function operationRows(limit=14, includeActions=false){
   const rows = DATA.methods.slice(0, limit).map(m => `
-    <tr><td><code>${esc(m.name)}</code></td><td>${risk(m.risk_level || 'low')}</td><td><code>${esc(m.backing_tool)}</code></td><td>${esc((m.args || []).join(', ') || 'none')}</td></tr>`).join('');
-  return `<table class="table"><thead><tr><th>Method</th><th>Risk</th><th>Backing Tool</th><th>Arguments</th></tr></thead><tbody>${rows}</tbody></table>`;
+    <tr><td><code>${esc(m.name)}</code></td><td>${risk(m.risk_level || 'low')}</td><td><code>${esc(m.backing_tool)}</code></td><td>${esc((m.args || []).join(', ') || 'none')}</td>${includeActions ? `<td><button class="small-button" type="button" onclick="selectPortalMethod(${jsString(m.name)})">Examples</button></td>` : ''}</tr>`).join('');
+  const actionHead = includeActions ? '<th>Use</th>' : '';
+  return `<table class="table"><thead><tr><th>Method</th><th>Risk</th><th>Backing Tool</th><th>Arguments</th>${actionHead}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 function mcpRows(limit=16){
   const rows = (DATA.mcp?.tools || []).slice(0, limit).map(t => `
@@ -825,10 +886,62 @@ function ansibleRows(limit=16){
     <tr><td><code>${esc(m.name)}</code></td><td>${esc(String(m.supports_check_mode ?? false))}</td><td>${esc(m.idempotence_level || 'none')}</td><td>${risk(m.risk_level || 'low')}</td></tr>`).join('');
   return `<table class="table"><thead><tr><th>Module</th><th>Check Mode</th><th>Idempotence</th><th>Risk</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="meta">No generated Ansible modules yet.</td></tr>'}</tbody></table>`;
 }
+function methodExamples(method=selectedMethod()){
+  if (!method) return '';
+  const requestBody = JSON.stringify(methodRequest(method));
+  const prettyRequest = JSON.stringify(methodRequest(method), null, 2);
+  const pythonArgs = methodCallArgs(method);
+  const packageName = `${profileSlug()}_client`;
+  const module = ansibleModuleFor(method);
+  const ansibleExample = module ? [
+    '- name: Run generated method',
+    `  site_agent.${DATA.ansible?.name || profileSlug()}.${module.name}:`,
+    '    browser: false',
+    '    mode: dry-run',
+  ].join('\n') : 'No generated Ansible module is available for this method.';
+  const httpExample = [
+    `curl -s -X POST http://127.0.0.1:9000/methods/${method.name} \\`,
+    `  -H 'Content-Type: application/json' \\`,
+    `  --data '${requestBody}'`,
+  ].join('\n');
+  const pythonExample = [
+    `from ${packageName} import ${profileSlug().replace(/(^|_)([a-z])/g, (_, p, c) => c.toUpperCase())}Client`,
+    '',
+    `client = ${profileSlug().replace(/(^|_)([a-z])/g, (_, p, c) => c.toUpperCase())}Client.from_profile("profiles/${DATA.profile.name}")`,
+    `result = client.${method.name}(${pythonArgs})`,
+    'print(result)',
+  ].join('\n');
+  const mcpExample = [
+    `site-agent mcp call --profile ${shellQuote(DATA.profile.name)} \\`,
+    `  --tool ${shellQuote(method.backing_tool || method.name)} \\`,
+    `  --args-json request-args.json`,
+  ].join('\n');
+  return `<div class="callout">
+    <h3>Selected Operation</h3>
+    <p><code>${esc(method.name)}</code> ${risk(method.risk_level || 'low')} ${esc(method.description || '')}</p>
+    <div class="actions"><button class="small-button" type="button" onclick="setTab('audit')">Review Evidence</button>${artifactButton('api_reference', 'Reference', true)}${artifactButton('postman_collection', 'Postman', true)}</div>
+    <div class="example-grid">
+      <div class="example-card"><b>HTTP Body</b>${codeBlock(prettyRequest)}</div>
+      <div class="example-card"><b>curl</b>${codeBlock(httpExample)}</div>
+      <div class="example-card"><b>Python</b>${codeBlock(pythonExample)}</div>
+      <div class="example-card"><b>MCP</b>${codeBlock(mcpExample)}</div>
+      <div class="example-card"><b>Ansible</b>${codeBlock(ansibleExample)}</div>
+      <div class="example-card"><b>Postman</b>${codeBlock(`Import the generated collection and environment, then run ${method.name}.`)}</div>
+    </div>
+  </div>`;
+}
+function modeCards(){
+  return `<div class="doc-grid">
+    ${docCard('Use', 'HTTP, Swagger, Postman, and copy-ready request examples.', [`<button class="small-button" type="button" onclick="setMode('use')">Open Use Mode</button>`])}
+    ${docCard('Automate', 'Python, MCP, and Ansible surfaces generated from the same schema.', [`<button class="small-button" type="button" onclick="setMode('automate')">Open Automate Mode</button>`])}
+    ${docCard('Audit', 'UI snapshots, annotations, mappings, and evidence for reviewers.', [`<button class="small-button" type="button" onclick="setMode('audit')">Open Audit Mode</button>`])}
+    ${docCard('Debug', 'Raw summary, artifact inventory, and capability projection data.', [`<button class="small-button" type="button" onclick="setMode('debug')">Open Debug Mode</button>`])}
+  </div>`;
+}
 function renderOverview(){
   return `<div class="portal">
     <h2>${esc(DATA.profile.name)} generated automation surfaces</h2>
-    <p>Start with the local API bridge, then use Swagger UI, Postman, Python, MCP, or Ansible from the same approved schema.</p>
+    <p>Start with the local API bridge, then choose the surface that matches the job: HTTP, Swagger, Postman, Python, MCP, Ansible, audit, or debug.</p>
     <div class="actions">
       <a class="button-link" href="swagger.html" target="_blank" rel="noreferrer">Swagger UI</a>
       ${artifactButton('openapi_json', 'OpenAPI JSON', true)}
@@ -838,6 +951,8 @@ function renderOverview(){
       `site-agent api serve --profile ${shellQuote(DATA.profile.name)}`,
       `site-agent explorer serve --profile ${shellQuote(DATA.profile.name)}`,
     ])}
+    ${modeCards()}
+    ${methodExamples()}
     <div class="doc-grid">
       ${docCard('HTTP API', 'OpenAPI contract for the generated local bridge.', [artifactButton('api_reference', 'Reference'), rawArtifactButton('openapi_yaml', 'YAML')])}
       ${docCard('Python API', 'Typed selector-free package backed by generated runtime metadata.', [artifactButton('python_api', 'Python Docs')])}
@@ -854,11 +969,12 @@ function renderApi(){
     <p>The local bridge exposes POST endpoints under <code>/methods/&lt;method&gt;</code> and defaults examples to dry-run mode.</p>
     <div class="actions"><a class="button-link" href="swagger.html" target="_blank" rel="noreferrer">Open Swagger UI</a>${rawArtifactButton('openapi_json', 'OpenAPI JSON')}${artifactButton('api_reference', 'API Reference', true)}</div>
     ${commandBlock([`site-agent api serve --profile ${shellQuote(DATA.profile.name)}`])}
-    ${operationRows()}
+    ${methodExamples()}
+    ${operationRows(24, true)}
   </div>`;
 }
 function renderPython(){
-  const packageName = (DATA.artifacts?.python_api ? `${DATA.profile.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}_client` : 'generated_client');
+  const packageName = DATA.artifacts?.python_api ? `${profileSlug()}_client` : 'generated_client';
   return `<div class="portal">
     <h2>Python API</h2>
     <p>Use the generated package as the shared execution layer for scripts, MCP, and higher-level automation.</p>
@@ -868,7 +984,8 @@ function renderPython(){
       `python -m pip install -e ${shellQuote(`output/${DATA.profile.name}/api`)}`,
       `python -c "from ${packageName} import *; print('client ready')"`,
     ])}
-    ${operationRows()}
+    ${methodExamples()}
+    ${operationRows(24, true)}
   </div>`;
 }
 function renderMcp(){
@@ -881,6 +998,7 @@ function renderMcp(){
       `site-agent mcp import --profile ${shellQuote(DATA.profile.name)} --target json`,
       `site-agent mcp import --profile ${shellQuote(DATA.profile.name)} --target codex --apply`,
     ])}
+    ${methodExamples()}
     ${mcpRows()}
   </div>`;
 }
@@ -893,6 +1011,7 @@ function renderAnsible(){
       `site-agent ansible build --profile ${shellQuote(DATA.profile.name)}`,
       `ANSIBLE_COLLECTIONS_PATH=${shellQuote(`output/${DATA.profile.name}/ansible`)} ansible-doc -l site_agent.${DATA.ansible?.name || DATA.profile.name}`,
     ])}
+    ${methodExamples()}
     ${ansibleRows()}
   </div>`;
 }
@@ -900,31 +1019,72 @@ function renderPostman(){
   return `<div class="portal">
     <h2>Postman</h2>
     <p>Import both generated files, start the local bridge, then run requests against <code>{{baseUrl}}</code>.</p>
-    <div class="actions">${artifactButton('postman_collection', 'Collection Guide')}${artifactButton('postman_environment', 'Environment Guide', true)}${rawArtifactButton('postman_collection', 'Download Collection')}${rawArtifactButton('postman_environment', 'Download Environment')}${rawArtifactButton('openapi_json', 'OpenAPI JSON')}</div>
+    <div class="actions"><a class="button-link" href="https://web.postman.co/" target="_blank" rel="noreferrer">Open Postman Web</a><a class="button-link secondary" href="https://learning.postman.com/docs/getting-started/importing-and-exporting/importing-data/" target="_blank" rel="noreferrer">Import Docs</a>${artifactButton('postman_collection', 'Collection Guide', true)}${artifactButton('postman_environment', 'Environment Guide', true)}${rawArtifactButton('postman_collection', 'Download Collection')}${rawArtifactButton('postman_environment', 'Download Environment')}${rawArtifactButton('openapi_json', 'OpenAPI JSON')}</div>
     ${commandBlock([`site-agent api serve --profile ${shellQuote(DATA.profile.name)}`])}
-    ${operationRows(10)}
+    ${methodExamples()}
+    ${operationRows(24, true)}
+  </div>`;
+}
+function renderDebug(){
+  const artifactRows = Object.entries(DATA.artifacts || {}).map(([key, item]) => `
+    <tr><td><code>${esc(key)}</code></td><td>${esc(item.kind || '')}</td><td><a href="${esc(item.href)}" target="_blank" rel="noreferrer">${esc(item.href)}</a></td><td>${item.raw_href ? `<a href="${esc(item.raw_href)}?raw=1" target="_blank" rel="noreferrer">raw</a>` : '<span class="meta">same</span>'}</td></tr>`).join('');
+  return `<div class="portal">
+    <h2>Debug</h2>
+    <p>Use this view when validating generated files, capability projection, or artifact routing.</p>
+    <h3>Summary</h3>${codeBlock(JSON.stringify(DATA.summary, null, 2))}
+    <h3>Artifacts</h3><table class="table"><thead><tr><th>Key</th><th>Kind</th><th>Human View</th><th>Raw</th></tr></thead><tbody>${artifactRows}</tbody></table>
+    <h3>Capability Projection</h3>${codeBlock(JSON.stringify(DATA.capabilities || {}, null, 2))}
   </div>`;
 }
 function renderPortal(){
   portalCards();
   $('tree').innerHTML = '';
   $('detail').innerHTML = '';
-  const renderers = {overview: renderOverview, api: renderApi, python: renderPython, mcp: renderMcp, ansible: renderAnsible, postman: renderPostman};
+  const renderers = {overview: renderOverview, api: renderApi, python: renderPython, mcp: renderMcp, ansible: renderAnsible, postman: renderPostman, debug: renderDebug};
   $('view').innerHTML = (renderers[currentTab] || renderOverview)();
 }
 function renderTabs(){
-  document.querySelectorAll('.tab[data-tab]').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === currentTab));
+  renderModes();
+  const tabsByMode = {
+    use: ['overview', 'api', 'postman'],
+    automate: ['python', 'mcp', 'ansible'],
+    audit: ['audit'],
+    debug: ['debug'],
+  };
+  const visibleTabs = new Set(tabsByMode[currentMode] || tabsByMode.use);
+  document.querySelectorAll('.tab[data-tab]').forEach(tab => {
+    tab.hidden = !visibleTabs.has(tab.dataset.tab);
+    tab.classList.toggle('active', tab.dataset.tab === currentTab);
+  });
+}
+function renderModes(){
+  document.querySelectorAll('.mode[data-mode]').forEach(mode => mode.classList.toggle('active', mode.dataset.mode === currentMode));
+}
+function modeForTab(tab){
+  if (['python', 'mcp', 'ansible'].includes(tab)) return 'automate';
+  if (tab === 'audit') return 'audit';
+  if (tab === 'debug') return 'debug';
+  return 'use';
+}
+function setMode(mode){
+  currentMode = mode;
+  currentTab = {use: 'overview', automate: 'python', audit: 'audit', debug: 'debug'}[mode] || 'overview';
+  localStorage.setItem('siteAgentExplorer.mode', currentMode);
+  localStorage.setItem('siteAgentExplorer.tab', currentTab);
+  renderView();
 }
 function setTab(tab){
   currentTab = tab;
+  currentMode = modeForTab(tab);
+  localStorage.setItem('siteAgentExplorer.mode', currentMode);
   localStorage.setItem('siteAgentExplorer.tab', currentTab);
   renderView();
 }
 function renderView(){
   renderTabs();
   const shell = $('shell');
-  shell.classList.toggle('portal-mode', currentTab !== 'audit');
-  if (currentTab !== 'audit') {
+  shell.classList.toggle('portal-mode', !['audit'].includes(currentTab));
+  if (!['audit'].includes(currentTab)) {
     renderPortal();
     return;
   }
@@ -985,6 +1145,7 @@ function renderAuditView(){
 fetch('explorer-data.json').then(r => r.json()).then(data => {
   DATA = data;
   $('profile').textContent = `${data.profile.name} · ${data.profile.base_url}`;
+  currentMode = modeForTab(currentTab);
   applyShellLayout();
   setupShellSplitters();
   selected = data.methods[0];

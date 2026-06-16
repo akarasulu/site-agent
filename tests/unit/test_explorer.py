@@ -187,6 +187,8 @@ def test_build_and_write_explorer_data(tmp_path):
     }
     method = data["methods"][0]
     assert method["group"] == "Internet / WAN"
+    assert method["arg_schema"]["properties"]["verbose"]["type"] == "boolean"
+    assert method["return_schema"] == {}
     assert method["ui"]["page_id"] == "missing"
     assert method["ui"]["form_id"] == "form"
     assert method["ui"]["html_snapshot"] == "<h1>WAN</h1>"
@@ -201,7 +203,14 @@ def test_build_and_write_explorer_data(tmp_path):
     index_html = (explorer_dir / "index.html").read_text(encoding="utf-8")
     assert "Generated API Explorer" in index_html
     assert 'data-tab="overview"' in index_html
+    assert 'data-mode="use"' in index_html
+    assert 'data-tab="debug"' in index_html
     assert "renderPostman" in index_html
+    assert "renderDebug" in index_html
+    assert "methodExamples" in index_html
+    assert "selectPortalMethod" in index_html
+    assert "HTTP Body" in index_html
+    assert "Open Postman Web" in index_html
     assert "rawArtifactButton" in index_html
     assert "function evidenceDetails" in index_html
     assert '<details class="evidence">' in index_html
@@ -221,7 +230,10 @@ def test_build_and_write_explorer_data(tmp_path):
     assert "2 evidence items" in api_reference_html
     assert (explorer_dir / "artifacts" / "postman-collection.json").exists()
     assert (explorer_dir / "artifacts" / "postman-environment.html").exists()
-    assert "Import Steps" in (explorer_dir / "artifacts" / "postman-environment.html").read_text(encoding="utf-8")
+    postman_environment_html = (explorer_dir / "artifacts" / "postman-environment.html").read_text(encoding="utf-8")
+    assert "Import Steps" in postman_environment_html
+    assert "Open Postman Web" in postman_environment_html
+    assert "Postman Import Docs" in postman_environment_html
     assert read_json(explorer_dir / "explorer-data.json")["summary"] == written["summary"]
 
 

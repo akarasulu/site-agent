@@ -4,6 +4,18 @@
 
 ## Release Notes
 
+### 1.15.0
+
+- Add explorer role modes for Use, Automate, Audit, and Debug workflows.
+- Add schema-backed examples for selected generated operations, including HTTP
+  request bodies, curl, Python, MCP, Ansible, and Postman guidance.
+- Add selectable operation rows so users can pivot from method lists to
+  concrete examples without entering the dense audit browser.
+- Add a Debug view for summary, artifact routing, and capability projection
+  inspection.
+- Add Postman Web and official import-documentation links to the explorer and
+  generated Postman artifact helper pages.
+
 ### 1.14.1
 
 - Render generated Markdown and Postman artifacts as human-readable explorer

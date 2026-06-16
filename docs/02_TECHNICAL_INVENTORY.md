@@ -7,8 +7,8 @@ schemas, fixtures, scripts, generated artifacts, and validation surfaces.
 
 | Item | Location | Notes |
 | --- | --- | --- |
-| Package metadata | `pyproject.toml` | `site-agent` version `1.14.1`; console script maps to `site_agent.cli:main`. |
-| Runtime version | `site_agent/__init__.py` | `__version__ = "1.14.1"`. |
+| Package metadata | `pyproject.toml` | `site-agent` version `1.15.0`; console script maps to `site_agent.cli:main`. |
+| Runtime version | `site_agent/__init__.py` | `__version__ = "1.15.0"`. |
 | Python support | `pyproject.toml` | `>=3.11`; classifiers list 3.11, 3.12, and 3.13. |
 | Optional crawl dependencies | `pyproject.toml` | `playwright>=1.49`, `crawl4ai==0.8.9`. |
 | Development dependencies | `pyproject.toml` | `pytest`, `pytest-cov`, `build`, `twine`. |
@@ -28,7 +28,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `site-agent api` | `build`, `serve` | Generate a typed Python API package and serve generated methods over a local HTTP bridge. |
 | `site-agent mcp` | `build`, `serve`, `call`, `import`, `diff`, `refresh-adapter` | Generate, serve, call, import, compare, and refresh MCP packages; `build` also syncs the generated Python API execution layer. |
 | `site-agent ansible` | `build` | Generate an Ansible collection from synthesized tools and API spec. |
-| `site-agent explorer` | `build`, `serve` | Build and serve a generated API portal with Swagger/Postman/docs tabs and a resizable audit view. |
+| `site-agent explorer` | `build`, `serve` | Build and serve a generated API portal with Use, Automate, Audit, and Debug modes, Swagger/Postman/docs links, operation examples, and a resizable audit view. |
 | `site-agent drift` | `check` | Compare latest crawl snapshots for UI drift. |
 | `site-agent ai` | `analyze` | Build an AI analysis report for a profile. |
 | `site-agent debug` | `report` | Explain state classification, evidence coverage, and mapping gaps. |
@@ -178,7 +178,7 @@ contract-quality thresholds.
 | `output/<profile>/docs/openapi.json` | `site-agent docs build`, `site-agent mcp build`, `site-agent api build`, and `site-agent ansible build`. |
 | `output/<profile>/docs/python-api.md` | `site-agent docs build`, `site-agent mcp build`, `site-agent api build`, and `site-agent ansible build`. |
 | `output/<profile>/postman/collection.json` | `site-agent docs build`, `site-agent mcp build`, `site-agent api build`, and `site-agent ansible build`. |
-| `output/<profile>/explorer/` | `site-agent explorer build`; includes `index.html`, `swagger.html`, `explorer-data.json`, and copied docs/Postman artifacts. |
+| `output/<profile>/explorer/` | `site-agent explorer build`; includes `index.html`, `swagger.html`, `explorer-data.json`, rendered artifact helpers, copied docs/Postman artifacts, and raw download links. |
 | `output/<profile>/reports/*.json` | Debug, action, quality, coverage, AI, drift, collection, and package reports. |
 | `output/<profile>/packages/` | `site-agent package build`. |
 | `<settings-repo>/snapshots/latest.json` | `site-agent config save`. |

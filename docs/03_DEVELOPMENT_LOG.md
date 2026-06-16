@@ -24,7 +24,7 @@ current repository state. It is not a full git history.
 | Explorer and router validation | Restore generated explorer splitters for resizable/collapsible regions and refresh the live router integration harness around explorer builds and sanitized MCP smoke reports. | `site_agent/core/explorer.py`, `tests/unit/test_explorer.py`, `scripts/run-router-integration.sh` |
 | Generated API docs | Generate OpenAPI 3.1, Postman collection/environment, and API reference artifacts from approved profile tools and API specs. | `site_agent/core/synthesize/docs.py`, `tests/unit/test_generated_specs.py` |
 | Local API bridge | Serve generated API methods over local HTTP for Swagger UI and Postman while delegating to the generated runtime. | `site_agent/core/synthesize/http_api.py`, `tests/unit/test_http_api_bridge.py` |
-| Explorer API portal | Make the generated explorer default to consumer docs, Swagger, Postman, Python, MCP, and Ansible paths while keeping the dense audit view for reviewers. | `site_agent/core/explorer.py`, `site_agent/core/synthesize/docs.py`, `tests/unit/test_explorer.py` |
+| Explorer API portal | Make the generated explorer default to role-based consumer docs, concrete operation examples, Swagger, Postman, Python, MCP, and Ansible paths while keeping the dense audit view for reviewers. | `site_agent/core/explorer.py`, `site_agent/core/synthesize/docs.py`, `tests/unit/test_explorer.py` |
 
 ## Recent Sprint Checkpoints
 
@@ -44,6 +44,7 @@ current repository state. It is not a full git history.
 | `v1.13.0` | Local HTTP API bridge for generated method execution. |
 | `v1.14.0` | Consumer-facing generated API explorer portal and packaged docs/Postman artifacts. |
 | `v1.14.1` | Browser-rendered explorer artifacts, collapsed evidence defaults, and raw artifact download routing. |
+| `v1.15.0` | Role-based explorer modes, selected-operation examples, and Postman import affordances. |
 
 ## Recent Validation Evidence
 

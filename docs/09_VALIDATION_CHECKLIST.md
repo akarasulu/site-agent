@@ -99,8 +99,9 @@ Generated docs should include `output/my-site/docs/openapi.json`,
 To test interactive Postman or Swagger calls, start
 `site-agent api serve --profile my-site` in a separate terminal.
 To review the consumer portal, run `site-agent explorer serve --profile
-my-site` and confirm the Overview, API, Python, MCP, Ansible, Postman, and
-Audit tabs are present.
+my-site` and confirm Use, Automate, Audit, and Debug modes are present.
+Confirm the API, Python, MCP, Ansible, and Postman pages show examples for a
+selected operation, and confirm Audit evidence remains collapsed by default.
 
 When Ansible tooling is installed, run the generated collection through
 `ansible-test sanity`.
