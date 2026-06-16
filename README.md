@@ -49,6 +49,7 @@ site-agent crawl run --profile my-site
 site-agent schema review --profile my-site
 site-agent api build --profile my-site
 site-agent mcp build --profile my-site
+site-agent docs build --profile my-site
 site-agent mcp serve --profile my-site
 site-agent ansible build --profile my-site
 site-agent config save --profile my-site --repo ../my-site-settings --commit --tag v1
@@ -63,7 +64,8 @@ That primary workflow is intentionally short:
 3. Gather documentation when the target has manuals, support pages, or guides.
 4. Crawl the UI and extract pages, forms, fields, actions, and dynamic flows.
 5. Review AI-assisted mappings and approve low-confidence items.
-6. Generate the Python API, MCP server, and Ansible collection from the approved model.
+6. Generate the Python API, MCP server, OpenAPI/Postman docs, and Ansible
+   collection from the approved model.
 7. Snapshot configuration into a dedicated settings repository when desired.
 8. Build a package containing evidence, schema, generated contracts, reports, and RAG chunks.
 9. Re-run drift and quality checks when the UI changes.
@@ -268,6 +270,17 @@ site-agent mcp call --profile my-site --tool save_settings --args-json args.json
 site-agent mcp call --profile my-site --tool save_settings --args-json args.json --mode apply
 ```
 
+Generate consumer-facing API docs for a profile:
+
+```bash
+site-agent docs build --profile my-site
+```
+
+That writes OpenAPI 3.1, a Postman collection, a Postman environment, and a
+generated API reference under `output/my-site/docs/` and
+`output/my-site/postman/`. The OpenAPI contract describes the selector-free
+site-agent API bridge, not raw website selectors.
+
 Contract stability helpers:
 
 ```bash
@@ -311,6 +324,17 @@ plan = client.set_alert_email("ops@example.test", dry_run=True)
 ```
 
 Selectors, Playwright locators, and profile-specific adapter details stay private inside the generated runtime/adapter files. Methods include docstrings, constraints, risk metadata, and evidence IDs.
+
+OpenAPI and Postman artifacts are generated beside the Python API and MCP
+package:
+
+```text
+output/my-site/docs/openapi.json
+output/my-site/docs/openapi.yaml
+output/my-site/docs/api-reference.md
+output/my-site/postman/collection.json
+output/my-site/postman/environment.json
+```
 
 ### MCP Server
 

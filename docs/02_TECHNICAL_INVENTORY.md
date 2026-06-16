@@ -7,8 +7,8 @@ schemas, fixtures, scripts, generated artifacts, and validation surfaces.
 
 | Item | Location | Notes |
 | --- | --- | --- |
-| Package metadata | `pyproject.toml` | `site-agent` version `1.11.0`; console script maps to `site_agent.cli:main`. |
-| Runtime version | `site_agent/__init__.py` | `__version__ = "1.11.0"`. |
+| Package metadata | `pyproject.toml` | `site-agent` version `1.12.0`; console script maps to `site_agent.cli:main`. |
+| Runtime version | `site_agent/__init__.py` | `__version__ = "1.12.0"`. |
 | Python support | `pyproject.toml` | `>=3.11`; classifiers list 3.11, 3.12, and 3.13. |
 | Optional crawl dependencies | `pyproject.toml` | `playwright>=1.49`, `crawl4ai==0.8.9`. |
 | Development dependencies | `pyproject.toml` | `pytest`, `pytest-cov`, `build`, `twine`. |
@@ -22,7 +22,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | --- | --- | --- |
 | `site-agent profile` | `init`, `import-example` | Create or import target profiles. |
 | `site-agent auth` | `setup` | Store auth strategy metadata and environment-variable references. |
-| `site-agent docs` | `discover` | Run AI-assisted documentation discovery for a profile. |
+| `site-agent docs` | `discover`, `build` | Run AI-assisted documentation discovery and generate OpenAPI/Postman/API reference artifacts for a profile. |
 | `site-agent crawl` | `run`, `collect`, `inventory`, `plan`, `compare`, `merge` | Crawl targets, collect rendered states, build site trees, plan follow-up crawls, compare and merge snapshots. |
 | `site-agent schema` | `review`, `queue`, `approve`, `reject`, `edit` | Align UI elements to ontology and manage review decisions. |
 | `site-agent api` | `build` | Generate a typed Python API package from synthesized tools. |
@@ -48,6 +48,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `profile init` | `--name`, `--base-url` |
 | `auth setup` | `--profile`, `--username-env`, `--password-env` |
 | `docs discover` | `--profile`, `--product-hint`, `--max-sources` |
+| `docs build` | `--profile`, `--api-bridge-url` |
 | `crawl run` | `--profile`, `--url`, `--fixture-html`, `--fixture-site`, `--start-path`, `--research-product-hint`, `--refresh-ai-domain`, `--use-plan`, `--max-planned-labels`, `--probe-budget-seconds`, `--target-depth`, `--backend` |
 | `crawl collect` | `--profile`, `--probe-budget-seconds`, `--target-depth`, `--max-states`, `--allow-incomplete` |
 | `schema approve/reject/edit` | `--profile`, `--ui-element-id`, `--confidence`, `--note`; `edit` also requires `--canonical-name` |
@@ -89,6 +90,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `site_agent/core/synthesize/api.py` | Generated Python API package synthesis. |
 | `site_agent/core/synthesize/ansible.py` | Generated Ansible collection synthesis. |
 | `site_agent/core/synthesize/contracts.py` | MCP contract generation and breaking-change diffing. |
+| `site_agent/core/synthesize/docs.py` | Generated OpenAPI, Postman, and API reference documentation bundle synthesis. |
 | `site_agent/core/synthesize/mcp_import.py` | MCP client config rendering and Codex config block installation. |
 | `site_agent/core/synthesize/runtime.py` | Generated tool runtime, browser-backed staged actions, MCP JSON-RPC handling, and stdio serving. |
 | `site_agent/core/config_versioning.py` | Settings repo init, config snapshot, diff, restore plan, readiness, restore execution, and verification. |
@@ -171,6 +173,8 @@ contract-quality thresholds.
 | `output/<profile>/mcp/contract.json` | `site-agent mcp build`. |
 | `output/<profile>/api/` | `site-agent mcp build` and `site-agent api build`. |
 | `output/<profile>/ansible/` | `site-agent ansible build`. |
+| `output/<profile>/docs/openapi.json` | `site-agent docs build`, `site-agent mcp build`, and `site-agent api build`. |
+| `output/<profile>/postman/collection.json` | `site-agent docs build`, `site-agent mcp build`, and `site-agent api build`. |
 | `output/<profile>/explorer/` | `site-agent explorer build`. |
 | `output/<profile>/reports/*.json` | Debug, action, quality, coverage, AI, drift, collection, and package reports. |
 | `output/<profile>/packages/` | `site-agent package build`. |

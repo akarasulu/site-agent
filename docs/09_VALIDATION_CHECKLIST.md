@@ -86,9 +86,14 @@ For Python API and Ansible:
 
 ```bash
 site-agent api build --profile my-site
+site-agent docs build --profile my-site
 site-agent ansible build --profile my-site
 python -m py_compile output/my-site/api/*/*.py
 ```
+
+Generated docs should include `output/my-site/docs/openapi.json`,
+`output/my-site/postman/collection.json`, and
+`output/my-site/postman/environment.json`.
 
 When Ansible tooling is installed, run the generated collection through
 `ansible-test sanity`.

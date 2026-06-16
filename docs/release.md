@@ -4,6 +4,15 @@
 
 ## Release Notes
 
+### 1.12.0
+
+- Generate OpenAPI 3.1, Postman collection, Postman environment, and API
+  reference artifacts from approved profile tools and API specs.
+- Add `site-agent docs build` and wire OpenAPI/Postman refreshes into API, MCP,
+  and Ansible build commands.
+- Add focused regression coverage for generated OpenAPI paths, site-agent
+  metadata extensions, and Postman collection/environment output.
+
 ### 1.11.0
 
 - Restore generated explorer splitters so capability, detail, UI summary, and

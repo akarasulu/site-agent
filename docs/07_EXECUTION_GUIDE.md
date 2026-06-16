@@ -116,6 +116,7 @@ site-agent crawl run --profile my-site
 site-agent schema review --profile my-site
 site-agent api build --profile my-site
 site-agent mcp build --profile my-site
+site-agent docs build --profile my-site
 site-agent ansible build --profile my-site
 site-agent quality check --profile my-site
 ```
@@ -158,6 +159,29 @@ site-agent mcp import --profile my-site --target json
 site-agent mcp import --profile my-site --target codex --apply
 site-agent mcp diff --profile my-site --baseline output/my-site/mcp/contract.json
 site-agent mcp refresh-adapter --profile my-site
+```
+
+## Generated API Documentation
+
+```bash
+site-agent docs build --profile my-site
+```
+
+The command writes:
+
+```text
+output/my-site/docs/openapi.json
+output/my-site/docs/openapi.yaml
+output/my-site/docs/api-reference.md
+output/my-site/postman/collection.json
+output/my-site/postman/environment.json
+```
+
+Use `--api-bridge-url` when the local API bridge will be served on a different
+host or port:
+
+```bash
+site-agent docs build --profile my-site --api-bridge-url http://127.0.0.1:9000
 ```
 
 Write-like tool calls default to dry-run:

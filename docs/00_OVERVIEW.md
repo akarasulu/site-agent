@@ -14,8 +14,8 @@ in profile directories, generated adapters, and user-owned output artifacts.
 | --- | --- |
 | Python package | `site-agent` |
 | Console script | `site-agent` |
-| Package metadata version | `1.11.0` in `pyproject.toml` |
-| Runtime package version | `1.11.0` in `site_agent/__init__.py` |
+| Package metadata version | `1.12.0` in `pyproject.toml` |
+| Runtime package version | `1.12.0` in `site_agent/__init__.py` |
 | Supported Python | `>=3.11` |
 | Default browser runtime | Playwright Chromium |
 | Optional crawl backend | Crawl4AI `0.8.9` |
@@ -28,7 +28,8 @@ index around those implementation threads.
 Checkpoint `v1.10.0` makes generated MCP builds synchronize the Python API
 execution layer by default. Checkpoint `v1.11.0` restores resizable and
 collapsible generated explorer regions and refreshes the live router validation
-harness.
+harness. Checkpoint `v1.12.0` adds generated OpenAPI/Postman/API reference
+artifacts for consumer-facing API documentation.
 
 ## Product Goal
 
@@ -42,6 +43,7 @@ should produce:
 * generated Python API methods with typed arguments and risk metadata,
 * generated MCP tools with stable semantic names and adapter bindings,
 * generated Ansible modules when read/write evidence supports idempotence,
+* generated OpenAPI, Postman, and API reference documentation for consumer use,
 * deterministic configuration snapshots and restore plans for user-owned
   settings repositories,
 * validation, drift, debug, quality, and packaging reports.

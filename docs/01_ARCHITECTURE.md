@@ -18,7 +18,8 @@ output.
   operations.
 * Use AI only as an assisted classifier, planner, summarizer, or description
   generator when captured evidence backs the result.
-* Generate Python API, MCP, and Ansible surfaces from the same approved model.
+* Generate Python API, MCP, Ansible, OpenAPI, and Postman surfaces from the same
+  approved model.
 * Default write-like behavior to dry-run, review, or disabled modes unless risk
   policy and confirmation gates permit apply mode.
 
@@ -38,6 +39,7 @@ flowchart LR
   Output --> API[Generated Python API]
   Output --> MCP[Generated MCP package]
   Output --> Ansible[Generated Ansible collection]
+  Output --> APIDocs[OpenAPI and Postman docs]
   Output --> Reports[Reports and packages]
   CLI --> SettingsRepo[User settings git repo]
 ```
@@ -66,6 +68,7 @@ flowchart TD
   Capabilities --> APISynth[Python API synthesis]
   Capabilities --> MCPSynth[MCP synthesis]
   Capabilities --> AnsibleSynth[Ansible synthesis]
+  Capabilities --> DocsSynth[OpenAPI and Postman docs]
   Snapshot --> Config[Configuration snapshot]
   Schema --> Config
   MCPSynth --> Config
@@ -193,11 +196,15 @@ flowchart LR
   Bindings --> MCP
   API --> Ansible[Ansible collection]
   Tools --> Contracts[MCP contract diffing]
+  Tools --> APIDocs[OpenAPI and Postman docs]
 ```
 
 The generated Python API is intended to be the shared execution layer for higher
 surfaces. MCP and Ansible generation currently use the same tool model and
 should delegate to generated Python API behavior where practical.
+Generated OpenAPI and Postman artifacts document the selector-free local API
+bridge contract and carry site-agent evidence, risk, and backing-tool metadata
+through OpenAPI extensions.
 
 ## Runtime And Safety
 

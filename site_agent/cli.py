@@ -52,6 +52,7 @@ from site_agent.core.synthesize.contracts import contract_from_tools, diff_contr
 from site_agent.core.synthesize.ansible import write_ansible_collection
 from site_agent.core.synthesize.api import write_api_package
 from site_agent.core.synthesize.capabilities import synthesize_capabilities
+from site_agent.core.synthesize.docs import DEFAULT_API_BRIDGE_URL, write_api_documentation_bundle
 from site_agent.core.synthesize.mcp import synthesize_form_tools, synthesize_tools, synthesize_unmapped_page_tools, write_mcp_package
 from site_agent.core.synthesize.mcp_import import build_mcp_import_spec, install_codex_config, marked_block, render_codex_toml, render_mcp_json
 from site_agent.core.synthesize.runtime import RuntimeErrorForTool, call_tool, serve_json_lines
@@ -949,12 +950,14 @@ def cmd_mcp_build(args: argparse.Namespace) -> int:
     tool_dicts = [tool.__dict__ if hasattr(tool, "__dict__") else tool for tool in tools]
     write_mcp_package(workspace(), profile.name, tools, bindings, profile.base_url if args.include_writes else None)
     api_dir, api_spec = write_api_package(workspace(), profile.name, tool_dicts)
+    docs_paths = write_api_documentation_bundle(workspace(), profile)
     write_contract(output_root(workspace(), profile.name) / "mcp")
     contract_report = contract_quality_report(profile, tools)
     contract_report_path = output_root(workspace(), profile.name) / "reports" / f"contract-quality-{snapshot.run_id}.json"
     write_json(contract_report_path, contract_report)
     print(f"Generated MCP package: {output_root(workspace(), profile.name) / 'mcp'}")
     print(f"Generated Python API execution layer: {api_dir} ({api_spec.package_name})")
+    print(f"Generated OpenAPI/Postman docs: {docs_paths['openapi_json']} and {docs_paths['postman_collection']}")
     print(f"Exposed {len(tools)} semantic capability tool(s). Raw adapters are not public API.")
     print(f"Saved capability report: {capability_report_path}")
     if capability_report["quality"]["numbered_public_names"] or capability_report["quality"]["generic_public_names"]:
@@ -977,8 +980,10 @@ def cmd_api_build(args: argparse.Namespace) -> int:
         write_mcp_package(workspace(), profile.name, tools, bindings, profile.base_url)
         write_contract(output_root(workspace(), profile.name) / "mcp")
     api_dir, spec = write_api_package(workspace(), profile.name, read_json(tools_path).get("tools", []))
+    docs_paths = write_api_documentation_bundle(workspace(), profile)
     print(f"Generated Python API package: {api_dir}")
     print(f"API methods: {len(spec.methods)}; package={spec.package_name}")
+    print(f"Generated OpenAPI/Postman docs: {docs_paths['openapi_json']} and {docs_paths['postman_collection']}")
     print(f"Next: site-agent ansible build --profile {profile.name} or site-agent mcp serve --profile {profile.name}")
     return 0
 
@@ -1003,8 +1008,10 @@ def cmd_ansible_build(args: argparse.Namespace) -> int:
         adapter_version=api_spec.get("adapter_version", "0.1.0"),
     )
     collection_dir, collection_spec = write_ansible_collection(workspace(), profile.name, read_json(tools_path).get("tools", []), spec_obj)
+    docs_paths = write_api_documentation_bundle(workspace(), profile)
     print(f"Generated Ansible collection: {collection_dir}")
     print(f"Ansible modules: {len(collection_spec.modules)}; collection={collection_spec.namespace}.{collection_spec.name}")
+    print(f"Refreshed OpenAPI/Postman docs: {docs_paths['openapi_json']} and {docs_paths['postman_collection']}")
     print(f"Next: run ansible-playbook with ANSIBLE_COLLECTIONS_PATH={output_root(workspace(), profile.name) / 'ansible'}")
     return 0
 
@@ -1516,6 +1523,22 @@ def cmd_docs_discover(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_docs_build(args: argparse.Namespace) -> int:
+    profile = load_profile(workspace(), args.profile)
+    docs_paths = write_api_documentation_bundle(
+        workspace(),
+        profile,
+        api_bridge_url=args.api_bridge_url,
+    )
+    print(f"Generated OpenAPI spec: {docs_paths['openapi_json']}")
+    print(f"Generated OpenAPI YAML copy: {docs_paths['openapi_yaml']}")
+    print(f"Generated API reference: {docs_paths['api_reference']}")
+    print(f"Generated Postman collection: {docs_paths['postman_collection']}")
+    print(f"Generated Postman environment: {docs_paths['postman_environment']}")
+    print(f"Next: site-agent explorer build --profile {profile.name} or site-agent api serve --profile {profile.name}")
+    return 0
+
+
 def cmd_package_build(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
     package_dir, zip_path, manifest = build_profile_package(workspace(), profile, include_private=not args.public_only, zip_bundle=not args.no_zip)
@@ -1658,6 +1681,14 @@ def build_parser(include_completion: bool = True) -> argparse.ArgumentParser:
     discover.add_argument("--product-hint", required=True)
     discover.add_argument("--max-sources", type=int, default=5)
     discover.set_defaults(func=cmd_docs_discover)
+    docs_build = docs_sub.add_parser("build", help="Generate OpenAPI, Postman, and generated API reference artifacts.")
+    docs_build.add_argument("--profile", required=True)
+    docs_build.add_argument(
+        "--api-bridge-url",
+        default=DEFAULT_API_BRIDGE_URL,
+        help="Base URL used in OpenAPI servers and Postman environment output.",
+    )
+    docs_build.set_defaults(func=cmd_docs_build)
 
     crawl = sub.add_parser("crawl")
     crawl_sub = crawl.add_subparsers(dest="crawl_command", required=True)
