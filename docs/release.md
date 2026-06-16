@@ -4,6 +4,18 @@
 
 ## Release Notes
 
+### 1.16.0
+
+- Add per-operation `Try in Swagger` links from the explorer selected
+  operation panel into the generated Swagger UI operation anchor.
+- Add a native explorer `Try Operation` panel with editable request JSON,
+  bridge URL configuration, bridge health check, dry-run execution, guarded
+  apply execution, and response rendering.
+- Add OpenAPI operation metadata and API bridge URL metadata to
+  `explorer-data.json`.
+- Add CORS and `OPTIONS` handling to the local API bridge so Swagger UI and the
+  explorer can execute generated methods from browser origins.
+
 ### 1.15.0
 
 - Add explorer role modes for Use, Automate, Audit, and Debug workflows.

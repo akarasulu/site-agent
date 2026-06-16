@@ -205,10 +205,11 @@ site-agent explorer build --profile my-site
 site-agent explorer serve --profile my-site
 ```
 
-Use mode shows Swagger, Postman, and copy-ready operation examples. Automate
-mode focuses on Python, MCP, and Ansible examples. Audit mode preserves UI
-evidence, adapter context, and captured page snapshots. Debug mode shows the
-generated summary, artifact routing, and capability projection data.
+Use mode shows Swagger, Postman, copy-ready operation examples,
+per-operation Swagger links, and a native dry-run Try panel. Automate mode
+focuses on Python, MCP, and Ansible examples. Audit mode preserves UI evidence,
+adapter context, and captured page snapshots. Debug mode shows the generated
+summary, artifact routing, and capability projection data.
 
 The bridge exposes:
 

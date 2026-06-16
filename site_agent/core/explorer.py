@@ -43,6 +43,8 @@ SURFACE_ARTIFACTS = [
     ("postman_environment", ("postman", "environment.json"), "artifacts/postman-environment.json", "Postman Environment", "postman"),
 ]
 
+DEFAULT_API_BRIDGE_URL = "http://127.0.0.1:8766"
+
 
 def surface_artifact_entries(root: Path) -> dict[str, dict[str, Any]]:
     entries = {}
@@ -272,6 +274,33 @@ fetch('{html.escape(raw_name)}?raw=1')
     return build_artifact_page(title, body)
 
 
+def openapi_bridge_metadata(root: Path) -> tuple[str, dict[str, dict[str, str]]]:
+    openapi_path = root / "docs" / "openapi.json"
+    if not openapi_path.exists():
+        return DEFAULT_API_BRIDGE_URL, {}
+    spec = read_json(openapi_path)
+    servers = spec.get("servers") or []
+    bridge_url = DEFAULT_API_BRIDGE_URL
+    if servers and isinstance(servers[0], dict) and servers[0].get("url"):
+        bridge_url = str(servers[0]["url"]).rstrip("/")
+    operations: dict[str, dict[str, str]] = {}
+    for path, path_item in (spec.get("paths") or {}).items():
+        if not isinstance(path_item, dict):
+            continue
+        post = path_item.get("post")
+        if not isinstance(post, dict):
+            continue
+        site_agent = post.get("x-site-agent") if isinstance(post.get("x-site-agent"), dict) else {}
+        method_name = str(site_agent.get("method_name") or post.get("operationId") or Path(path).name)
+        tags = post.get("tags") if isinstance(post.get("tags"), list) else []
+        operations[method_name] = {
+            "path": str(path),
+            "operation_id": str(post.get("operationId") or method_name),
+            "tag": str(tags[0]) if tags else "Generated API",
+        }
+    return bridge_url, operations
+
+
 def method_group(name: str) -> str:
     for group, prefixes in GROUPS:
         if name.startswith(prefixes):
@@ -427,6 +456,7 @@ def build_explorer_data(profile: Profile, snapshot: CrawlSnapshot, root: Path) -
     elements_by_id = element_lookup(snapshot)
     forms_by_id = form_lookup(snapshot)
     artifacts = surface_artifact_entries(root)
+    api_bridge_url, openapi_operations = openapi_bridge_metadata(root)
     methods: list[dict[str, Any]] = []
     for method in sorted(api_methods, key=lambda item: item.get("name", "")):
         name = method.get("name", "")
@@ -453,6 +483,14 @@ def build_explorer_data(profile: Profile, snapshot: CrawlSnapshot, root: Path) -
                 "args": sorted((method.get("args", {}).get("properties") or {}).keys()),
                 "arg_schema": method.get("args", {}),
                 "return_schema": method.get("return_schema", {}),
+                "openapi": openapi_operations.get(
+                    name,
+                    {
+                        "path": f"/methods/{name}",
+                        "operation_id": name,
+                        "tag": "Generated API",
+                    },
+                ),
                 "backing_tool": method.get("backing_tool") or name,
                 "source_type": tool.get("source_type"),
                 "reasoning_summary": tool.get("reasoning_summary"),
@@ -475,6 +513,7 @@ def build_explorer_data(profile: Profile, snapshot: CrawlSnapshot, root: Path) -
         )
     return {
         "profile": {"id": profile.id, "name": profile.name, "base_url": profile.base_url},
+        "api_bridge_url": api_bridge_url,
         "summary": {
             "methods": len(methods),
             "public_tools": len([tool for tool in tools if tool.get("exposure_level") != "internal_disabled"]),
@@ -569,6 +608,15 @@ summary { cursor:pointer; font-weight:650; font-size:14px; }
 .example-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-top:12px; }
 .example-card { border:1px solid var(--line); border-radius:8px; background:#fff; padding:12px; min-width:0; }
 .example-card b { display:block; margin-bottom:8px; }
+.try-panel { border:1px solid #b8d6ec; border-radius:8px; background:#fff; margin-top:12px; padding:12px; }
+.try-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:12px; }
+.try-panel label { color:var(--muted); display:block; font-size:13px; margin-bottom:6px; }
+.try-panel input[type="text"], .try-panel textarea { border:1px solid var(--line); border-radius:6px; font:13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding:9px; width:100%; }
+.try-panel textarea { min-height:240px; resize:vertical; }
+.try-status { color:var(--muted); font-size:13px; margin-top:8px; min-height:20px; }
+.try-status.error { color:var(--red); }
+.try-status.ok { color:var(--green); }
+.check-row { align-items:center; display:flex; gap:8px; margin:8px 0; }
 .actions { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
 .button-link { align-items:center; background:#1267b1; border:1px solid #1267b1; border-radius:6px; color:#fff; display:inline-flex; font-size:13px; min-height:34px; padding:7px 11px; text-decoration:none; }
 .button-link.secondary { background:#fff; color:#1267b1; }
@@ -615,7 +663,7 @@ details.evidence summary { color:#1267b1; cursor:pointer; font-weight:650; }
 .evidence-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-height:220px; overflow:auto; }
 .evidence-list code { background:#fff; border:1px solid var(--line); border-radius:999px; font-size:12px; padding:2px 6px; }
 pre { white-space:pre-wrap; word-break:break-word; background:#f7f9fc; border:1px solid var(--line); border-radius:6px; padding:10px; font-size:12px; }
-@media (max-width: 1100px) { header { align-items:flex-start; flex-direction:column; gap:8px; } .modes { margin-left:0; } .shell { display:block; } aside, section.detail { border:0; } .splitter, .canvas-splitter { display:none; } .canvas { display:block; } .canvas > .page, .canvas > .anno-list { margin:0 0 16px; } .doc-grid, .example-grid { grid-template-columns:1fr; } }
+@media (max-width: 1100px) { header { align-items:flex-start; flex-direction:column; gap:8px; } .modes { margin-left:0; } .shell { display:block; } aside, section.detail { border:0; } .splitter, .canvas-splitter { display:none; } .canvas { display:block; } .canvas > .page, .canvas > .anno-list { margin:0 0 16px; } .doc-grid, .example-grid, .try-grid { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -685,6 +733,19 @@ function sampleArgs(method){
 function methodRequest(method){
   return {args: sampleArgs(method), browser: false, mode: 'dry-run'};
 }
+function bridgeDefaultUrl(){
+  return (localStorage.getItem('siteAgentExplorer.bridgeUrl') || DATA.api_bridge_url || 'http://127.0.0.1:8766').replace(/\/+$/, '');
+}
+function bridgeUrl(){
+  const input = $('bridge-url');
+  const value = (input?.value || bridgeDefaultUrl()).trim().replace(/\/+$/, '');
+  localStorage.setItem('siteAgentExplorer.bridgeUrl', value);
+  return value;
+}
+function swaggerHref(method){
+  const operation = method.openapi || {};
+  return `swagger.html#/${encodeURIComponent(operation.tag || 'Generated API')}/${encodeURIComponent(operation.operation_id || method.name)}`;
+}
 function methodCallArgs(method){
   const args = sampleArgs(method);
   return Object.entries(args).map(([name, value]) => `${name}=${JSON.stringify(value)}`).join(', ');
@@ -695,6 +756,98 @@ function ansibleModuleFor(method){
 function selectedMethod(){
   selected = selected || DATA.methods[0];
   return selected;
+}
+function setTryStatus(message, kind=''){
+  const status = $('try-status');
+  if (!status) return;
+  status.className = `try-status ${kind}`;
+  status.textContent = message;
+}
+function setTryResponse(value){
+  const response = $('try-response');
+  if (!response) return;
+  response.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+}
+function resetTryBody(){
+  const body = $('try-body');
+  const method = selectedMethod();
+  if (!body || !method) return;
+  body.value = JSON.stringify(methodRequest(method), null, 2);
+  setTryStatus('Request reset to dry-run defaults.', 'ok');
+  setTryResponse('');
+}
+async function checkBridge(){
+  setTryStatus('Checking bridge...', '');
+  try {
+    const response = await fetch(`${bridgeUrl()}/health`, {method: 'GET'});
+    const payload = await response.json();
+    if (!response.ok) {
+      setTryStatus(`Bridge returned HTTP ${response.status}.`, 'error');
+    } else {
+      setTryStatus(`Bridge ready: ${payload.methods ?? '?'} method(s).`, 'ok');
+    }
+    setTryResponse(payload);
+  } catch (error) {
+    setTryStatus(`Bridge not reachable. Start: site-agent api serve --profile ${DATA.profile.name}`, 'error');
+    setTryResponse(String(error));
+  }
+}
+function parseTryBody(){
+  try {
+    const payload = JSON.parse($('try-body')?.value || '{}');
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error('Request body must be a JSON object.');
+    }
+    if (payload.args != null && (typeof payload.args !== 'object' || Array.isArray(payload.args))) {
+      throw new Error('Request body field "args" must be an object.');
+    }
+    payload.args = payload.args || {};
+    payload.browser = Boolean(payload.browser);
+    return payload;
+  } catch (error) {
+    setTryStatus(`Invalid request JSON: ${error.message || error}`, 'error');
+    setTryResponse('');
+    return null;
+  }
+}
+async function tryOperation(methodName, applyMode=false){
+  const method = DATA.methods.find(item => item.name === methodName) || selectedMethod();
+  const payload = parseTryBody();
+  if (!payload || !method) return;
+  if (applyMode) {
+    if (!$('try-apply-confirm')?.checked) {
+      setTryStatus('Enable apply mode before sending a mutating request.', 'error');
+      return;
+    }
+    if ((method.risk_level || 'low') !== 'low' && !window.confirm(`Apply ${method.name}? This is ${method.risk_level} risk.`)) {
+      setTryStatus('Apply request cancelled.', '');
+      return;
+    }
+    payload.mode = 'apply';
+  } else {
+    payload.mode = 'dry-run';
+  }
+  setTryStatus(`${applyMode ? 'Applying' : 'Running dry-run'} ${method.name}...`, '');
+  setTryResponse('');
+  try {
+    const response = await fetch(`${bridgeUrl()}/methods/${encodeURIComponent(method.name)}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const text = await response.text();
+    let payloadOut;
+    try {
+      payloadOut = text ? JSON.parse(text) : {};
+    } catch (_error) {
+      payloadOut = text;
+    }
+    setTryStatus(response.ok ? `HTTP ${response.status} ${response.statusText || 'OK'}` : `HTTP ${response.status} ${response.statusText || 'error'}`, response.ok ? 'ok' : 'error');
+    setTryResponse(payloadOut);
+  } catch (error) {
+    setTryStatus(`Request failed. Is the API bridge running on ${bridgeUrl()}?`, 'error');
+    setTryResponse(String(error));
+  }
 }
 const layoutState = {
   navWidth: Number(localStorage.getItem('siteAgentExplorer.navWidth')) || 330,
@@ -893,6 +1046,7 @@ function methodExamples(method=selectedMethod()){
   const pythonArgs = methodCallArgs(method);
   const packageName = `${profileSlug()}_client`;
   const module = ansibleModuleFor(method);
+  const bridge = bridgeDefaultUrl();
   const ansibleExample = module ? [
     '- name: Run generated method',
     `  site_agent.${DATA.ansible?.name || profileSlug()}.${module.name}:`,
@@ -900,7 +1054,7 @@ function methodExamples(method=selectedMethod()){
     '    mode: dry-run',
   ].join('\n') : 'No generated Ansible module is available for this method.';
   const httpExample = [
-    `curl -s -X POST http://127.0.0.1:9000/methods/${method.name} \\`,
+    `curl -s -X POST ${bridge}/methods/${method.name} \\`,
     `  -H 'Content-Type: application/json' \\`,
     `  --data '${requestBody}'`,
   ].join('\n');
@@ -919,7 +1073,7 @@ function methodExamples(method=selectedMethod()){
   return `<div class="callout">
     <h3>Selected Operation</h3>
     <p><code>${esc(method.name)}</code> ${risk(method.risk_level || 'low')} ${esc(method.description || '')}</p>
-    <div class="actions"><button class="small-button" type="button" onclick="setTab('audit')">Review Evidence</button>${artifactButton('api_reference', 'Reference', true)}${artifactButton('postman_collection', 'Postman', true)}</div>
+    <div class="actions"><a class="button-link" href="${esc(swaggerHref(method))}" target="_blank" rel="noreferrer">Try in Swagger</a><button class="small-button" type="button" onclick="setTab('audit')">Review Evidence</button>${artifactButton('api_reference', 'Reference', true)}${artifactButton('postman_collection', 'Postman', true)}</div>
     <div class="example-grid">
       <div class="example-card"><b>HTTP Body</b>${codeBlock(prettyRequest)}</div>
       <div class="example-card"><b>curl</b>${codeBlock(httpExample)}</div>
@@ -927,6 +1081,41 @@ function methodExamples(method=selectedMethod()){
       <div class="example-card"><b>MCP</b>${codeBlock(mcpExample)}</div>
       <div class="example-card"><b>Ansible</b>${codeBlock(ansibleExample)}</div>
       <div class="example-card"><b>Postman</b>${codeBlock(`Import the generated collection and environment, then run ${method.name}.`)}</div>
+    </div>
+    ${tryPanel(method, prettyRequest)}
+  </div>`;
+}
+function tryPanel(method, prettyRequest){
+  const applyHint = (method.risk_level || 'low') === 'low'
+    ? 'Apply mode can still change the target; dry-run is recommended first.'
+    : `${method.risk_level} risk operation. Apply mode requires explicit confirmation.`;
+  return `<div class="try-panel">
+    <h3>Try Operation</h3>
+    <p>Runs through the local API bridge. Keep requests in <code>dry-run</code> until you are ready to apply changes.</p>
+    <div class="try-grid">
+      <div>
+        <label for="bridge-url">API bridge URL</label>
+        <input id="bridge-url" type="text" value="${esc(bridgeDefaultUrl())}" oninput="localStorage.setItem('siteAgentExplorer.bridgeUrl', this.value.trim())">
+        <div class="actions">
+          <button class="small-button" type="button" onclick="checkBridge()">Check Bridge</button>
+          <button class="small-button" type="button" onclick="resetTryBody()">Reset Dry-Run Body</button>
+        </div>
+        <label for="try-body">Request JSON</label>
+        <textarea id="try-body" spellcheck="false">${esc(prettyRequest)}</textarea>
+        <div class="check-row">
+          <input id="try-apply-confirm" type="checkbox">
+          <label for="try-apply-confirm">${esc(applyHint)}</label>
+        </div>
+        <div class="actions">
+          <button class="button-link" type="button" onclick="tryOperation(${jsString(method.name)}, false)">Run Dry-Run</button>
+          <button class="button-link secondary" type="button" onclick="tryOperation(${jsString(method.name)}, true)">Run Apply</button>
+        </div>
+        <div id="try-status" class="try-status">Start the bridge with <code>site-agent api serve --profile ${esc(DATA.profile.name)}</code>.</div>
+      </div>
+      <div>
+        <label for="try-response">Response</label>
+        <pre id="try-response"></pre>
+      </div>
     </div>
   </div>`;
 }

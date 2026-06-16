@@ -207,13 +207,14 @@ Generated OpenAPI, Postman, quickstart, Python, MCP, and Ansible artifacts
 document the selector-free local API bridge and generated automation surfaces.
 The generated explorer publishes those artifacts as a consumer-facing portal
 with Use, Automate, Audit, and Debug modes. Use and Automate expose generated
-operation examples, while Audit retains the evidence-heavy UI/adapter browser
-for reviewers.
+operation examples, per-operation Swagger links, and a native dry-run Try panel,
+while Audit retains the evidence-heavy UI/adapter browser for reviewers.
 
 The local API bridge lives in `site_agent/core/synthesize/http_api.py` and is
 served by `site-agent api serve`. It exposes health, OpenAPI, and generated
 method endpoints while delegating execution to the same generated runtime used
-by MCP calls.
+by MCP calls. The bridge emits CORS headers and handles `OPTIONS` so generated
+Swagger UI and explorer pages can execute methods from a browser.
 
 ## Runtime And Safety
 

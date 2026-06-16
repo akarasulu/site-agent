@@ -7,7 +7,7 @@ documentation risks. It should stay honest enough to support release decisions.
 
 | Limitation | Impact | Mitigation |
 | --- | --- | --- |
-| An already installed editable package may still expose stale metadata until reinstalled. | `importlib.metadata.version("site-agent")` can lag source version in externally managed Python environments. | Refresh in a virtual environment or with `pipx`; source `pyproject.toml` and `site_agent.__version__` agree at `1.15.0`. |
+| An already installed editable package may still expose stale metadata until reinstalled. | `importlib.metadata.version("site-agent")` can lag source version in externally managed Python environments. | Refresh in a virtual environment or with `pipx`; source `pyproject.toml` and `site_agent.__version__` agree at `1.16.0`. |
 | Crawl4AI is pinned to `0.8.9`. | Newer Python interpreters or native dependencies may fail install or runtime checks. | Prefer Python 3.11-3.13 for Crawl4AI and run `site-agent doctor`. |
 | Generated target packages are not distributed through the core PyPI package. | Operators need a separate generated workspace or bundle. | Use `site-agent package build` or separate target repositories. |
 
@@ -32,7 +32,7 @@ documentation risks. It should stay honest enough to support release decisions.
 | Surface | Current limitation | Mitigation |
 | --- | --- | --- |
 | Python API | Generated package is currently a thin semantic wrapper over tool specs and runtime metadata. | Treat it as the preferred shared execution layer, then extend adapters as capabilities mature. |
-| OpenAPI/Postman | Generated docs require the local API bridge to be running before interactive HTTP tools can execute calls. | Use `site-agent docs build` for static docs and `site-agent api serve` when trying requests from Swagger UI or Postman. |
+| OpenAPI/Postman/explorer Try | Generated docs require the local API bridge to be running before interactive HTTP tools can execute calls. | Use `site-agent docs build` for static docs and `site-agent api serve` when trying requests from Swagger UI, the explorer Try panel, or Postman. |
 | Explorer portal | Swagger UI loads its viewer assets from a public CDN, though the OpenAPI document itself is local. | Use the local Markdown/OpenAPI/Postman artifacts when working offline or mirroring docs into an internal portal. |
 | MCP | Stdio server is local-process oriented; no hosted HTTP/SSE transport exists in core. | Use `site-agent mcp import` for local MCP clients; add transport wrappers outside core if needed. |
 | Ansible | Modules should claim full idempotence only when current-value reads and write evidence both exist. | Review generated `ansible-spec.json` and run `ansible-test sanity` when available. |

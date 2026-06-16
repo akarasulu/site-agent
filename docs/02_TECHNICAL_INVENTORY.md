@@ -7,8 +7,8 @@ schemas, fixtures, scripts, generated artifacts, and validation surfaces.
 
 | Item | Location | Notes |
 | --- | --- | --- |
-| Package metadata | `pyproject.toml` | `site-agent` version `1.15.0`; console script maps to `site_agent.cli:main`. |
-| Runtime version | `site_agent/__init__.py` | `__version__ = "1.15.0"`. |
+| Package metadata | `pyproject.toml` | `site-agent` version `1.16.0`; console script maps to `site_agent.cli:main`. |
+| Runtime version | `site_agent/__init__.py` | `__version__ = "1.16.0"`. |
 | Python support | `pyproject.toml` | `>=3.11`; classifiers list 3.11, 3.12, and 3.13. |
 | Optional crawl dependencies | `pyproject.toml` | `playwright>=1.49`, `crawl4ai==0.8.9`. |
 | Development dependencies | `pyproject.toml` | `pytest`, `pytest-cov`, `build`, `twine`. |
@@ -28,7 +28,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `site-agent api` | `build`, `serve` | Generate a typed Python API package and serve generated methods over a local HTTP bridge. |
 | `site-agent mcp` | `build`, `serve`, `call`, `import`, `diff`, `refresh-adapter` | Generate, serve, call, import, compare, and refresh MCP packages; `build` also syncs the generated Python API execution layer. |
 | `site-agent ansible` | `build` | Generate an Ansible collection from synthesized tools and API spec. |
-| `site-agent explorer` | `build`, `serve` | Build and serve a generated API portal with Use, Automate, Audit, and Debug modes, Swagger/Postman/docs links, operation examples, and a resizable audit view. |
+| `site-agent explorer` | `build`, `serve` | Build and serve a generated API portal with Use, Automate, Audit, and Debug modes, Swagger/Postman/docs links, native Try panel, operation examples, and a resizable audit view. |
 | `site-agent drift` | `check` | Compare latest crawl snapshots for UI drift. |
 | `site-agent ai` | `analyze` | Build an AI analysis report for a profile. |
 | `site-agent debug` | `report` | Explain state classification, evidence coverage, and mapping gaps. |
@@ -92,7 +92,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `site_agent/core/synthesize/ansible.py` | Generated Ansible collection synthesis. |
 | `site_agent/core/synthesize/contracts.py` | MCP contract generation and breaking-change diffing. |
 | `site_agent/core/synthesize/docs.py` | Generated OpenAPI, Postman, quickstart, Python, MCP, Ansible, and API reference documentation bundle synthesis. |
-| `site_agent/core/synthesize/http_api.py` | Local HTTP API bridge for generated methods, OpenAPI, and Postman execution. |
+| `site_agent/core/synthesize/http_api.py` | Local HTTP API bridge for generated methods, OpenAPI, Swagger UI, explorer Try panel, and Postman execution. |
 | `site_agent/core/synthesize/mcp_import.py` | MCP client config rendering and Codex config block installation. |
 | `site_agent/core/synthesize/runtime.py` | Generated tool runtime, browser-backed staged actions, MCP JSON-RPC handling, and stdio serving. |
 | `site_agent/core/config_versioning.py` | Settings repo init, config snapshot, diff, restore plan, readiness, restore execution, and verification. |
@@ -101,7 +101,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `site_agent/core/drift/reuse.py` | Adapter reuse analysis for selector changes that preserve semantics, state path, and visual position. |
 | `site_agent/core/quality.py` | Contract quality, coverage comparison, crawl memory, and quality gate reports. |
 | `site_agent/core/debug.py` | Debug report for states, evidence coverage, and ontology gaps. |
-| `site_agent/core/explorer.py` | Static generated API portal and audit explorer data/HTML writer, including Swagger and artifact publishing. |
+| `site_agent/core/explorer.py` | Static generated API portal and audit explorer data/HTML writer, including Swagger links, native Try panel, and artifact publishing. |
 | `site_agent/core/package.py` | Profile knowledge package assembly, RAG chunks, checksums, and zip bundles. |
 | `site_agent/core/doctor.py` | Local dependency and Playwright readiness checks. |
 | `site_agent/core/completion.py` | Shell completion generation and dynamic profile-name completion. |

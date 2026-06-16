@@ -87,8 +87,15 @@ def test_api_bridge_serves_health_openapi_and_method_calls(tmp_path):
     try:
         with urlopen(f"{base_url}/health", timeout=3) as response:
             health = json.loads(response.read().decode("utf-8"))
+            assert response.headers["Access-Control-Allow-Origin"] == "*"
         assert health["status"] == "ok"
         assert health["methods"] == 1
+
+        options = Request(f"{base_url}/methods/get_status", method="OPTIONS")
+        with urlopen(options, timeout=3) as response:
+            assert response.status == 204
+            assert response.headers["Access-Control-Allow-Origin"] == "*"
+            assert "POST" in response.headers["Access-Control-Allow-Methods"]
 
         with urlopen(f"{base_url}/openapi.json", timeout=3) as response:
             openapi = json.loads(response.read().decode("utf-8"))

@@ -111,7 +111,22 @@ def write_explorer_inputs(root: Path):
             ]
         },
     )
-    write_json(root / "docs" / "openapi.json", {"openapi": "3.1.0", "paths": {}})
+    write_json(
+        root / "docs" / "openapi.json",
+        {
+            "openapi": "3.1.0",
+            "servers": [{"url": "http://127.0.0.1:8766"}],
+            "paths": {
+                "/methods/internet_wan_get": {
+                    "post": {
+                        "operationId": "internet_wan_get",
+                        "tags": ["Read APIs"],
+                        "x-site-agent": {"method_name": "internet_wan_get"},
+                    }
+                }
+            },
+        },
+    )
     (root / "docs" / "openapi.yaml").write_text('{"openapi": "3.1.0", "paths": {}}\n', encoding="utf-8")
     (root / "docs" / "api-reference.md").write_text(
         "# Demo Generated API Reference\n\n"
@@ -193,6 +208,7 @@ def test_build_and_write_explorer_data(tmp_path):
     assert method["ui"]["form_id"] == "form"
     assert method["ui"]["html_snapshot"] == "<h1>WAN</h1>"
     assert data["capabilities"] == {"capabilities": 1}
+    assert data["api_bridge_url"] == "http://127.0.0.1:8766"
     assert data["artifacts"]["openapi_json"]["href"] == "artifacts/openapi.json"
     assert data["artifacts"]["api_reference"]["href"] == "artifacts/api-reference.html"
     assert data["artifacts"]["api_reference"]["raw_href"] == "artifacts/api-reference.md"
@@ -200,6 +216,11 @@ def test_build_and_write_explorer_data(tmp_path):
     assert data["artifacts"]["postman_environment"]["raw_href"] == "artifacts/postman-environment.json"
     assert data["mcp"]["tools"][0]["name"] == "internet_wan_get"
     assert data["ansible"]["modules"][0]["name"] == "demo_internet_wan_get"
+    assert method["openapi"] == {
+        "path": "/methods/internet_wan_get",
+        "operation_id": "internet_wan_get",
+        "tag": "Read APIs",
+    }
     index_html = (explorer_dir / "index.html").read_text(encoding="utf-8")
     assert "Generated API Explorer" in index_html
     assert 'data-tab="overview"' in index_html
@@ -210,6 +231,12 @@ def test_build_and_write_explorer_data(tmp_path):
     assert "methodExamples" in index_html
     assert "selectPortalMethod" in index_html
     assert "HTTP Body" in index_html
+    assert "Try Operation" in index_html
+    assert "Try in Swagger" in index_html
+    assert "checkBridge" in index_html
+    assert "tryOperation" in index_html
+    assert "bridge-url" in index_html
+    assert "http://127.0.0.1:8766" in index_html
     assert "Open Postman Web" in index_html
     assert "rawArtifactButton" in index_html
     assert "function evidenceDetails" in index_html

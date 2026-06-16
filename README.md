@@ -298,8 +298,9 @@ site-agent explorer build --profile my-site
 site-agent explorer serve --profile my-site
 ```
 
-The explorer defaults to Use mode with Swagger, Postman, and copy-ready
-operation examples. Automate mode focuses on Python, MCP, and Ansible. Audit
+The explorer defaults to Use mode with Swagger, Postman, copy-ready operation
+examples, `Try in Swagger` links, and a native `Try Operation` panel that calls
+the local API bridge. Automate mode focuses on Python, MCP, and Ansible. Audit
 mode keeps UI evidence and adapter context collapsed until a reviewer expands
 it. Debug mode exposes summary, artifact routing, and capability projection
 data.
@@ -381,7 +382,10 @@ Use `site-agent api serve --profile my-site` to run the local bridge behind
 those docs, and `site-agent explorer serve --profile my-site` to open the
 consumer-facing portal. The portal includes Use, Automate, Audit, and Debug
 modes plus generated curl, Python, MCP, Ansible, and Postman examples for the
-selected operation.
+selected operation. It also includes a native dry-run `Try Operation` panel and
+per-operation `Try in Swagger` links. Start `site-agent api serve --profile
+my-site` before using browser-based execution from either explorer or Swagger
+UI.
 
 ### MCP Server
 

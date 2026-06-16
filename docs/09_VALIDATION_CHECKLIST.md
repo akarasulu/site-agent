@@ -101,7 +101,8 @@ To test interactive Postman or Swagger calls, start
 To review the consumer portal, run `site-agent explorer serve --profile
 my-site` and confirm Use, Automate, Audit, and Debug modes are present.
 Confirm the API, Python, MCP, Ansible, and Postman pages show examples for a
-selected operation, and confirm Audit evidence remains collapsed by default.
+selected operation, confirm the Try panel can reach the API bridge and run a
+dry-run call, and confirm Audit evidence remains collapsed by default.
 
 When Ansible tooling is installed, run the generated collection through
 `ansible-test sanity`.

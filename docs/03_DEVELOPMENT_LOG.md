@@ -25,6 +25,7 @@ current repository state. It is not a full git history.
 | Generated API docs | Generate OpenAPI 3.1, Postman collection/environment, and API reference artifacts from approved profile tools and API specs. | `site_agent/core/synthesize/docs.py`, `tests/unit/test_generated_specs.py` |
 | Local API bridge | Serve generated API methods over local HTTP for Swagger UI and Postman while delegating to the generated runtime. | `site_agent/core/synthesize/http_api.py`, `tests/unit/test_http_api_bridge.py` |
 | Explorer API portal | Make the generated explorer default to role-based consumer docs, concrete operation examples, Swagger, Postman, Python, MCP, and Ansible paths while keeping the dense audit view for reviewers. | `site_agent/core/explorer.py`, `site_agent/core/synthesize/docs.py`, `tests/unit/test_explorer.py` |
+| Explorer Try execution | Let browser users jump from explorer operations to Swagger Try-It-Out or execute dry-run requests directly through the local API bridge. | `site_agent/core/explorer.py`, `site_agent/core/synthesize/http_api.py`, `tests/unit/test_explorer.py`, `tests/unit/test_http_api_bridge.py` |
 
 ## Recent Sprint Checkpoints
 
@@ -45,6 +46,7 @@ current repository state. It is not a full git history.
 | `v1.14.0` | Consumer-facing generated API explorer portal and packaged docs/Postman artifacts. |
 | `v1.14.1` | Browser-rendered explorer artifacts, collapsed evidence defaults, and raw artifact download routing. |
 | `v1.15.0` | Role-based explorer modes, selected-operation examples, and Postman import affordances. |
+| `v1.16.0` | Explorer native Try panel, Swagger operation links, and browser CORS support for the API bridge. |
 
 ## Recent Validation Evidence
 

@@ -3,6 +3,29 @@
 All notable repository checkpoints are recorded here. Tags use semantic
 versioning and sprint records under `docs/sprints/` capture validation evidence.
 
+## 1.16.0 - 2026-06-16
+
+### Added
+
+* Added per-operation `Try in Swagger` links from the explorer selected
+  operation panel into the generated Swagger UI operation anchor.
+* Added a native explorer `Try Operation` panel with editable request JSON,
+  bridge URL configuration, bridge health check, dry-run execution, guarded
+  apply execution, and response rendering.
+* Added OpenAPI operation metadata and API bridge URL metadata to
+  `explorer-data.json`.
+* Added CORS and `OPTIONS` handling to the local API bridge so Swagger UI and
+  the explorer can execute generated methods from browser origins.
+
+### Validation
+
+* `python -m pytest tests/unit/test_explorer.py tests/unit/test_http_api_bridge.py`
+* `python -m py_compile site_agent/core/explorer.py site_agent/core/synthesize/http_api.py`
+* Extracted explorer template JavaScript and checked it with `node --check`.
+* Browser smoke against the regenerated ZTE explorer and live API bridge
+  confirmed bridge health, Swagger operation links, dry-run execution, response
+  rendering, and no browser console errors.
+
 ## 1.15.0 - 2026-06-16
 
 ### Added

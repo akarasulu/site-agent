@@ -63,10 +63,24 @@ def _read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
 def _write_json(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
     body = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
     handler.send_response(status)
+    _write_cors_headers(handler)
     handler.send_header("Content-Type", "application/json")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def _write_cors_headers(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+
+
+def _write_empty(handler: BaseHTTPRequestHandler, status: int) -> None:
+    handler.send_response(status)
+    _write_cors_headers(handler)
+    handler.send_header("Content-Length", "0")
+    handler.end_headers()
 
 
 def make_api_bridge_handler(package_dir: Path):
@@ -74,6 +88,9 @@ def make_api_bridge_handler(package_dir: Path):
 
     class ApiBridgeHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
+
+        def do_OPTIONS(self) -> None:
+            _write_empty(self, HTTPStatus.NO_CONTENT)
 
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
