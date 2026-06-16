@@ -255,11 +255,22 @@ header { height:58px; display:flex; align-items:center; gap:18px; padding:0 20px
 h1 { font-size:18px; margin:0; }
 .meta { color:var(--muted); font-size:13px; }
 .load-error { margin:18px; padding:14px; border:1px solid #e3aaaa; background:#fff4f4; color:#8d2929; border-radius:8px; }
-.shell { display:grid; grid-template-columns: 330px minmax(420px, 1fr) 420px; min-height:calc(100vh - 58px); }
+.shell { --nav-width:330px; --detail-width:420px; display:grid; grid-template-columns: var(--nav-width) 10px minmax(420px, 1fr) 10px var(--detail-width); min-height:calc(100vh - 58px); }
+.shell.nav-collapsed { --nav-width:0px; }
+.shell.detail-collapsed { --detail-width:0px; }
 aside, main, section { min-width:0; }
 aside { border-right:1px solid var(--line); background:#fff; overflow:auto; padding:14px; }
 main { overflow:auto; padding:18px; }
 section.detail { border-left:1px solid var(--line); background:#fff; overflow:auto; padding:18px; }
+.shell.nav-collapsed aside, .shell.detail-collapsed section.detail { border:0; overflow:hidden; padding:0; visibility:hidden; }
+.splitter { appearance:none; background:#edf2f7; border:0; border-left:1px solid var(--line); border-right:1px solid var(--line); cursor:col-resize; min-width:10px; padding:0; position:relative; }
+.splitter:hover, .splitter:focus-visible, .splitter.dragging { background:#dce8f4; outline:none; }
+.splitter::before { background:#9aabba; border-radius:999px; content:""; height:44px; left:50%; position:absolute; top:calc(50vh - 58px); transform:translateX(-50%); width:2px; }
+.splitter::after { color:#667789; content:""; font-size:12px; left:50%; line-height:1; position:absolute; top:calc(50vh - 32px); transform:translateX(-50%); }
+.splitter[data-pane="nav"]::after { content:"<"; }
+.splitter[data-pane="detail"]::after { content:">"; }
+.shell.nav-collapsed .splitter[data-pane="nav"]::after { content:">"; }
+.shell.detail-collapsed .splitter[data-pane="detail"]::after { content:"<"; }
 .search { width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:6px; font-size:14px; margin-bottom:12px; }
 details { border-bottom:1px solid #edf0f4; padding:6px 0; }
 summary { cursor:pointer; font-weight:650; font-size:14px; }
@@ -274,8 +285,19 @@ summary { cursor:pointer; font-weight:650; font-size:14px; }
 .risk { padding:3px 7px; border-radius:999px; font-size:12px; border:1px solid var(--line); }
 .risk.low { color:var(--green); background:#edf8f4; }
 .risk.medium { color:#986400; background:#fff6da; }
-.canvas { padding:16px; display:grid; grid-template-columns: minmax(260px, 0.8fr) minmax(380px, 1.2fr) 260px; gap:16px; }
-.page { border:1px solid #cfd7e2; background:#fbfcfe; min-height:420px; border-radius:6px; padding:14px; position:relative; }
+.canvas { --visual-width:320px; --annotations-width:280px; padding:16px; display:grid; grid-template-columns: var(--visual-width) 10px minmax(380px, 1fr) 10px var(--annotations-width); gap:0; }
+.canvas.visual-collapsed { --visual-width:0px; }
+.canvas.annotations-collapsed { --annotations-width:0px; }
+.canvas > .page, .canvas > .anno-list { margin:0 8px; }
+.canvas.visual-collapsed > .ui-visual, .canvas.annotations-collapsed > .anno-list { border:0; margin:0; overflow:hidden; padding:0; visibility:hidden; }
+.canvas-splitter { appearance:none; align-self:stretch; background:#edf2f7; border:1px solid var(--line); border-bottom:0; border-top:0; cursor:col-resize; min-width:10px; padding:0; position:relative; }
+.canvas-splitter:hover, .canvas-splitter:focus-visible, .canvas-splitter.dragging { background:#dce8f4; outline:none; }
+.canvas-splitter::before { background:#9aabba; border-radius:999px; content:""; height:40px; left:50%; position:absolute; top:220px; transform:translateX(-50%); width:2px; }
+.canvas-splitter[data-pane="visual"]::after { color:#667789; content:"<"; font-size:12px; left:50%; position:absolute; top:246px; transform:translateX(-50%); }
+.canvas-splitter[data-pane="annotations"]::after { color:#667789; content:">"; font-size:12px; left:50%; position:absolute; top:246px; transform:translateX(-50%); }
+.canvas.visual-collapsed .canvas-splitter[data-pane="visual"]::after { content:">"; }
+.canvas.annotations-collapsed .canvas-splitter[data-pane="annotations"]::after { content:"<"; }
+.page { border:1px solid #cfd7e2; background:#fbfcfe; min-height:420px; min-width:0; border-radius:6px; padding:14px; position:relative; }
 .actual-page { padding:0; overflow:hidden; }
 .actual-page iframe { width:100%; height:620px; border:0; background:#fff; }
 .empty-visual { padding:14px; color:var(--muted); }
@@ -292,14 +314,16 @@ summary { cursor:pointer; font-weight:650; font-size:14px; }
 .chips { display:flex; flex-wrap:wrap; gap:6px; }
 .chip { border:1px solid var(--line); border-radius:999px; padding:3px 7px; font-size:12px; background:#fbfcfe; }
 pre { white-space:pre-wrap; word-break:break-word; background:#f7f9fc; border:1px solid var(--line); border-radius:6px; padding:10px; font-size:12px; }
-@media (max-width: 1100px) { .shell { grid-template-columns:1fr; } aside, section.detail { border:0; } .canvas { grid-template-columns:1fr; } }
+@media (max-width: 1100px) { .shell { display:block; } aside, section.detail { border:0; } .splitter, .canvas-splitter { display:none; } .canvas { display:block; } .canvas > .page, .canvas > .anno-list { margin:0 0 16px; } }
 </style>
 </head>
 <body>
 <header><h1>Semantic API Explorer</h1><span class="meta" id="profile"></span></header>
-<div class="shell">
+<div class="shell" id="shell">
 <aside><input class="search" id="q" placeholder="Filter capabilities"><div id="tree"></div></aside>
+<button class="splitter" type="button" data-pane="nav" title="Drag to resize, double-click to collapse or restore the capability list" aria-label="Resize capability list"></button>
 <main><div class="cards" id="cards"></div><div class="view" id="view"></div></main>
+<button class="splitter" type="button" data-pane="detail" title="Drag to resize, double-click to collapse or restore the details pane" aria-label="Resize details pane"></button>
 <section class="detail" id="detail"></section>
 </div>
 <script>
@@ -307,6 +331,122 @@ const $ = (id) => document.getElementById(id);
 let DATA, selected;
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function risk(r){ return `<span class="risk ${esc(r)}">${esc(r)}</span>`; }
+const layoutState = {
+  navWidth: Number(localStorage.getItem('siteAgentExplorer.navWidth')) || 330,
+  detailWidth: Number(localStorage.getItem('siteAgentExplorer.detailWidth')) || 420,
+  visualWidth: Number(localStorage.getItem('siteAgentExplorer.visualWidth')) || 320,
+  annotationsWidth: Number(localStorage.getItem('siteAgentExplorer.annotationsWidth')) || 280,
+  navCollapsed: localStorage.getItem('siteAgentExplorer.navCollapsed') === 'true',
+  detailCollapsed: localStorage.getItem('siteAgentExplorer.detailCollapsed') === 'true',
+  visualCollapsed: localStorage.getItem('siteAgentExplorer.visualCollapsed') === 'true',
+  annotationsCollapsed: localStorage.getItem('siteAgentExplorer.annotationsCollapsed') === 'true',
+};
+function clamp(value, min, max){
+  return Math.min(Math.max(value, min), max);
+}
+function applyShellLayout(){
+  const shell = $('shell');
+  shell.style.setProperty('--nav-width', `${layoutState.navCollapsed ? 0 : layoutState.navWidth}px`);
+  shell.style.setProperty('--detail-width', `${layoutState.detailCollapsed ? 0 : layoutState.detailWidth}px`);
+  shell.classList.toggle('nav-collapsed', layoutState.navCollapsed);
+  shell.classList.toggle('detail-collapsed', layoutState.detailCollapsed);
+}
+function applyCanvasLayout(canvas){
+  if (!canvas) return;
+  canvas.style.setProperty('--visual-width', `${layoutState.visualCollapsed ? 0 : layoutState.visualWidth}px`);
+  canvas.style.setProperty('--annotations-width', `${layoutState.annotationsCollapsed ? 0 : layoutState.annotationsWidth}px`);
+  canvas.classList.toggle('visual-collapsed', layoutState.visualCollapsed);
+  canvas.classList.toggle('annotations-collapsed', layoutState.annotationsCollapsed);
+}
+function saveLayoutValue(key, value){
+  localStorage.setItem(`siteAgentExplorer.${key}`, String(value));
+}
+function togglePane(pane){
+  const key = `${pane}Collapsed`;
+  layoutState[key] = !layoutState[key];
+  saveLayoutValue(key, layoutState[key]);
+  if (pane === 'nav' || pane === 'detail') {
+    applyShellLayout();
+  } else {
+    applyCanvasLayout(document.querySelector('.canvas'));
+  }
+}
+function setupShellSplitters(){
+  document.querySelectorAll('.splitter').forEach(splitter => {
+    let startX = 0;
+    let startWidth = 0;
+    let dragged = false;
+    const pane = splitter.dataset.pane;
+    splitter.addEventListener('dblclick', () => togglePane(pane));
+    splitter.addEventListener('pointerdown', event => {
+      startX = event.clientX;
+      startWidth = pane === 'nav' ? layoutState.navWidth : layoutState.detailWidth;
+      dragged = false;
+      splitter.classList.add('dragging');
+      splitter.setPointerCapture(event.pointerId);
+    });
+    splitter.addEventListener('pointermove', event => {
+      if (!splitter.classList.contains('dragging')) return;
+      const delta = event.clientX - startX;
+      dragged = dragged || Math.abs(delta) > 3;
+      if (pane === 'nav') {
+        layoutState.navCollapsed = false;
+        layoutState.navWidth = clamp(startWidth + delta, 220, 560);
+        saveLayoutValue('navWidth', layoutState.navWidth);
+        saveLayoutValue('navCollapsed', false);
+      } else {
+        layoutState.detailCollapsed = false;
+        layoutState.detailWidth = clamp(startWidth - delta, 260, 640);
+        saveLayoutValue('detailWidth', layoutState.detailWidth);
+        saveLayoutValue('detailCollapsed', false);
+      }
+      applyShellLayout();
+    });
+    splitter.addEventListener('pointerup', event => {
+      splitter.classList.remove('dragging');
+      splitter.releasePointerCapture(event.pointerId);
+      if (!dragged) togglePane(pane);
+    });
+  });
+}
+function setupCanvasSplitters(canvas){
+  canvas.querySelectorAll('.canvas-splitter').forEach(splitter => {
+    let startX = 0;
+    let startWidth = 0;
+    let dragged = false;
+    const pane = splitter.dataset.pane;
+    splitter.addEventListener('dblclick', () => togglePane(pane));
+    splitter.addEventListener('pointerdown', event => {
+      startX = event.clientX;
+      startWidth = pane === 'visual' ? layoutState.visualWidth : layoutState.annotationsWidth;
+      dragged = false;
+      splitter.classList.add('dragging');
+      splitter.setPointerCapture(event.pointerId);
+    });
+    splitter.addEventListener('pointermove', event => {
+      if (!splitter.classList.contains('dragging')) return;
+      const delta = event.clientX - startX;
+      dragged = dragged || Math.abs(delta) > 3;
+      if (pane === 'visual') {
+        layoutState.visualCollapsed = false;
+        layoutState.visualWidth = clamp(startWidth + delta, 180, 560);
+        saveLayoutValue('visualWidth', layoutState.visualWidth);
+        saveLayoutValue('visualCollapsed', false);
+      } else {
+        layoutState.annotationsCollapsed = false;
+        layoutState.annotationsWidth = clamp(startWidth - delta, 180, 520);
+        saveLayoutValue('annotationsWidth', layoutState.annotationsWidth);
+        saveLayoutValue('annotationsCollapsed', false);
+      }
+      applyCanvasLayout(canvas);
+    });
+    splitter.addEventListener('pointerup', event => {
+      splitter.classList.remove('dragging');
+      splitter.releasePointerCapture(event.pointerId);
+      if (!dragged) togglePane(pane);
+    });
+  });
+}
 function renderTree(filter=''){
   const q = filter.toLowerCase();
   $('tree').innerHTML = DATA.tree.map(g => {
@@ -341,20 +481,24 @@ function renderView(){
   $('view').innerHTML = `
     <div class="view-head"><div><div class="view-title">${esc(m.name)}</div><div class="meta">${esc(m.description)}</div></div>${risk(m.risk_level)}</div>
     <div class="canvas">
-      <div class="page">
+      <div class="page ui-visual">
         <div class="browser">${esc(ui.page_url || ui.state || ui.page_id || 'page unknown')}</div>
         ${headings.map(h => `<div class="heading">${esc(h)}</div>`).join('') || '<div class="heading">Discovered UI Surface</div>'}
         ${annotations.slice(0, 28).map(a => `<div class="widget ${esc(a.kind)}"><span>${esc(a.label || a.arg || a.id)}</span><span class="badge">${esc(a.kind)}</span></div>`).join('')}
         ${values.slice(0, 12).map(([k,v]) => `<div class="widget"><span>${esc(k)}</span><span class="meta">${esc(v)}</span></div>`).join('')}
       </div>
+      <button class="canvas-splitter" type="button" data-pane="visual" title="Drag to resize, double-click to collapse or restore the UI summary" aria-label="Resize UI summary"></button>
       <div class="page actual-page">
         <div class="browser">${ui.html_snapshot ? 'Captured rendered HTML snapshot' : 'Captured HTML snapshot missing'}</div>
         ${frameHtml}
       </div>
+      <button class="canvas-splitter" type="button" data-pane="annotations" title="Drag to resize, double-click to collapse or restore annotations" aria-label="Resize annotations"></button>
       <div class="anno-list">
         ${annotations.length ? annotations.map(a => `<div class="anno"><b>${esc(a.kind)}: ${esc(a.label || a.arg || a.id)}</b><div class="meta">${esc(a.detail || a.control_type || '')}</div></div>`).join('') : '<div class="anno"><b>No field-level annotation</b><div class="meta">This capability is backed by read-only page evidence or a scalar read adapter.</div></div>'}
       </div>
     </div>`;
+  applyCanvasLayout(document.querySelector('.canvas'));
+  setupCanvasSplitters(document.querySelector('.canvas'));
   $('detail').innerHTML = `
     <h2>${esc(m.name)}</h2>
     <div class="kv">
@@ -373,6 +517,8 @@ function renderView(){
 fetch('explorer-data.json').then(r => r.json()).then(data => {
   DATA = data;
   $('profile').textContent = `${data.profile.name} · ${data.profile.base_url}`;
+  applyShellLayout();
+  setupShellSplitters();
   renderCards();
   selected = data.methods[0];
   renderTree();

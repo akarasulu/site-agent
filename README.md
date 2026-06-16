@@ -168,13 +168,18 @@ scripts/run-mock-container.sh
 
 ## Router Validation
 
-Router validation is opt-in and uses an external profile under `profiles/examples/zte-router`.
+Router validation is opt-in and uses an external profile under
+`profiles/examples/zte-router`.
 
 ```bash
 scripts/run-router-integration.sh
 ```
 
-The script reads `SITE_AGENT_ROUTER_PASSWORD` or prompts silently, stores browser session state only in the temporary run workspace, and removes that session state after the crawl. Router-facing commands may need a network grant when run from a sandboxed agent environment.
+The script reads `SITE_AGENT_ROUTER_PASSWORD` or prompts silently, stores
+browser session state only in the temporary run workspace, builds the semantic
+explorer, writes MCP smoke artifacts under `output/zte-router/reports/`, and
+removes session state after the crawl. Router-facing commands may need a
+network grant when run from a sandboxed agent environment.
 
 ### Example: ZTE Modem/Router Profile
 
@@ -199,6 +204,7 @@ site-agent crawl run --profile zte-router --research-product-hint "ZTE router we
 site-agent schema review --profile zte-router
 site-agent api build --profile zte-router
 site-agent mcp build --profile zte-router
+site-agent explorer build --profile zte-router
 site-agent ansible build --profile zte-router
 site-agent config save --profile zte-router --repo ../zte-router-settings --commit --tag v1
 site-agent config coverage --profile zte-router --settings-repo ../zte-router-settings

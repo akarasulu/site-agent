@@ -14,3 +14,4 @@ profiles/*/auth/
 profiles/*/profile.json
 profiles/*/docs/*.html
 site-agent-openai.key
+router-root-password.txt

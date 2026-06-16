@@ -4,6 +4,19 @@
 
 ## Release Notes
 
+### 1.11.0
+
+- Restore generated explorer splitters so capability, detail, UI summary, and
+  annotation regions can be resized or collapsed after each fresh explorer
+  build.
+- Add regression coverage and rendered smoke validation for explorer splitter
+  controls.
+- Refresh the ZTE router integration harness to create supplied workspaces,
+  build the semantic explorer, choose current canonical MCP smoke tools, and
+  keep raw smoke outputs in reports while printing sanitized summaries.
+- Ignore `router-root-password.txt` so local router credential files stay out
+  of commits.
+
 ### 1.10.0
 
 - Make `site-agent mcp build` generate and sync the profile's Python API

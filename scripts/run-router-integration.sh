@@ -10,10 +10,10 @@ ROUTER_PASSWORD="${SITE_AGENT_ROUTER_PASSWORD:-}"
 
 if [[ -z "$ROUTER_PASSWORD" ]]; then
   if [[ -t 0 ]]; then
-    IFS= read -r -s -p "Router password: " ROUTER_PASSWORD
+    IFS= read -r -s -p "Router password: " ROUTER_PASSWORD || true
     printf "\n" >&2
   else
-    IFS= read -r ROUTER_PASSWORD
+    IFS= read -r ROUTER_PASSWORD || true
   fi
 fi
 if [[ -z "$ROUTER_PASSWORD" ]]; then
@@ -24,6 +24,7 @@ fi
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 AI_PROVIDER_VALUE="${SITE_AGENT_AI_PROVIDER:-none}"
 
+mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 "$SITE_AGENT_BIN" profile import-example "$ROOT/profiles/examples/zte-router"
 if [[ "${SITE_AGENT_DISCOVER_DOCS:-1}" == "1" ]]; then
@@ -62,6 +63,58 @@ PY
 
 login_router
 
+mcp_smoke_call() {
+  local label="$1"
+  shift
+  local tool_name
+  local output_path
+
+  if ! tool_name="$("$PYTHON_BIN" - "$@" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+candidates = sys.argv[1:]
+tools = {
+    tool.get("name")
+    for tool in json.loads(Path("output/zte-router/mcp/tools.json").read_text()).get("tools", [])
+}
+for candidate in candidates:
+    if candidate in tools:
+        print(candidate)
+        break
+else:
+    raise SystemExit(1)
+PY
+)"; then
+    echo "No generated MCP tool found for smoke '${label}'." >&2
+    echo "Candidates: $*" >&2
+    return 1
+  fi
+
+  output_path="output/zte-router/reports/mcp-smoke-${label}.json"
+  "$SITE_AGENT_BIN" mcp call --profile zte-router --tool "$tool_name" > "$output_path"
+  "$PYTHON_BIN" - "$label" "$tool_name" "$output_path" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+label, tool_name, output_path = sys.argv[1:]
+result = json.loads(Path(output_path).read_text())
+values = result.get("values")
+value_count = len(values) if isinstance(values, dict) else int("value" in result)
+summary = {
+    "label": label,
+    "tool": tool_name,
+    "execution_surface": result.get("execution_surface", "runtime"),
+    "evidence_ids": len(result.get("evidence_ids", [])),
+    "value_count": value_count,
+    "artifact": output_path,
+}
+print("MCP smoke: " + json.dumps(summary, sort_keys=True))
+PY
+}
+
 SITE_AGENT_AI_PROVIDER="$AI_PROVIDER_VALUE" SITE_AGENT_AI_TIMEOUT="${SITE_AGENT_AI_TIMEOUT:-120}" "$SITE_AGENT_BIN" crawl run --profile zte-router
 SITE_AGENT_AI_PROVIDER="$AI_PROVIDER_VALUE" SITE_AGENT_AI_TIMEOUT="${SITE_AGENT_AI_TIMEOUT:-120}" "$SITE_AGENT_BIN" schema review --profile zte-router
 "$SITE_AGENT_BIN" debug report --profile zte-router --limit 8
@@ -75,10 +128,11 @@ if [[ "${SITE_AGENT_ROUTER_PLANNED_SECOND_PASS:-1}" == "1" ]]; then
   "$SITE_AGENT_BIN" crawl compare --profile zte-router
 fi
 "$SITE_AGENT_BIN" mcp build --profile zte-router
+"$SITE_AGENT_BIN" explorer build --profile zte-router
 "$SITE_AGENT_BIN" actions report --profile zte-router
 "$SITE_AGENT_BIN" quality check --profile zte-router --fail-on-error
-"$SITE_AGENT_BIN" mcp call --profile zte-router --tool get_wan_status
-"$SITE_AGENT_BIN" mcp call --profile zte-router --tool get_software_version
+mcp_smoke_call "internet-status" internet_status_get internet_wan_get get_wan_status
+mcp_smoke_call "device-information" management_device_information_get get_software_version
 unset ROUTER_PASSWORD
 
 rm -f profiles/zte-router/auth/storage-state.json

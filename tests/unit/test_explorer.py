@@ -142,5 +142,11 @@ def test_build_and_write_explorer_data(tmp_path):
     assert method["ui"]["form_id"] == "form"
     assert method["ui"]["html_snapshot"] == "<h1>WAN</h1>"
     assert data["capabilities"] == {"capabilities": 1}
-    assert (explorer_dir / "index.html").exists()
+    index_html = (explorer_dir / "index.html").read_text(encoding="utf-8")
+    assert 'class="splitter"' in index_html
+    assert 'class="canvas-splitter"' in index_html
+    assert "setupShellSplitters" in index_html
+    assert "setupCanvasSplitters" in index_html
+    assert "nav-collapsed" in index_html
+    assert "visual-collapsed" in index_html
     assert read_json(explorer_dir / "explorer-data.json")["summary"] == written["summary"]

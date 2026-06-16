@@ -21,6 +21,7 @@ current repository state. It is not a full git history.
 | Packaging | Add Docker, PyPI workflow, shell command installer, and profile knowledge package builder. | `Dockerfile`, `.github/workflows/`, `scripts/install-shell-commands.sh`, `site_agent/core/package.py` |
 | Research implementation | Add evidence cache, visual page graph, adaptive crawl gain scoring, cache/gain workflow wiring, workflow hardening, drift-aware adapter reuse, and documentation constraint mining. | `site_agent/core/evidence_cache.py`, `site_agent/core/page_graph.py`, `site_agent/core/crawl_gain.py`, `site_agent/core/drift/reuse.py`, `site_agent/core/ingest/docs.py`, `contracts/research-technique-implementation-plan.md` |
 | Documentation | Refresh the full `docs/00_` through `docs/10_` engineering documentation suite and add research report discovery. | `docs/00_OVERVIEW.md` through `docs/10_FINAL_REPORT.md`, `docs/research/README.md` |
+| Explorer and router validation | Restore generated explorer splitters for resizable/collapsible regions and refresh the live router integration harness around explorer builds and sanitized MCP smoke reports. | `site_agent/core/explorer.py`, `tests/unit/test_explorer.py`, `scripts/run-router-integration.sh` |
 
 ## Recent Sprint Checkpoints
 
@@ -35,6 +36,7 @@ current repository state. It is not a full git history.
 | `v1.8.0` | Documentation constraint, unit, and operation mining into ontology ingestion. |
 | `v1.9.0` | Developer documentation and research report refresh. |
 | `v1.10.0` | MCP build synchronizes the generated Python API execution layer. |
+| `v1.11.0` | Generated explorer splitters and router validation harness refresh. |
 
 ## Recent Validation Evidence
 

@@ -76,6 +76,11 @@ source <(site-agent completion bash)
 | `SITE_AGENT_RUN_ROUTER_TESTS` | Enables opt-in pytest router tests. |
 | `SITE_AGENT_ROUTER_WORKDIR` | Workspace for router integration script. |
 | `SITE_AGENT_ROUTER_PLANNED_SECOND_PASS` | Enables or disables planned second pass in router script. |
+| `SITE_AGENT_ROUTER_MAX_PLANNED_LABELS` | Planned second-pass label cap for router integration script. |
+| `SITE_AGENT_ROUTER_PROBE_SECONDS` | Planned second-pass probe budget for router integration script. |
+| `SITE_AGENT_DISCOVER_DOCS` | Set to `0` to skip router documentation discovery in the integration script. |
+| `SITE_AGENT_BIN` | Override the `site-agent` executable used by router scripts. |
+| `PYTHON_BIN` | Override the Python executable used by router scripts. |
 | `SITE_AGENT_CONFIRM_LIVE_ROUTER_WRITE` | Must equal `create-activate-delete-port-forward` for live write apply mode. |
 
 ## Mock Fixture Workflow

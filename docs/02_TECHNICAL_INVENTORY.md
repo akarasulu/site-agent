@@ -7,8 +7,8 @@ schemas, fixtures, scripts, generated artifacts, and validation surfaces.
 
 | Item | Location | Notes |
 | --- | --- | --- |
-| Package metadata | `pyproject.toml` | `site-agent` version `1.10.0`; console script maps to `site_agent.cli:main`. |
-| Runtime version | `site_agent/__init__.py` | `__version__ = "1.10.0"`. |
+| Package metadata | `pyproject.toml` | `site-agent` version `1.11.0`; console script maps to `site_agent.cli:main`. |
+| Runtime version | `site_agent/__init__.py` | `__version__ = "1.11.0"`. |
 | Python support | `pyproject.toml` | `>=3.11`; classifiers list 3.11, 3.12, and 3.13. |
 | Optional crawl dependencies | `pyproject.toml` | `playwright>=1.49`, `crawl4ai==0.8.9`. |
 | Development dependencies | `pyproject.toml` | `pytest`, `pytest-cov`, `build`, `twine`. |
@@ -28,7 +28,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `site-agent api` | `build` | Generate a typed Python API package from synthesized tools. |
 | `site-agent mcp` | `build`, `serve`, `call`, `import`, `diff`, `refresh-adapter` | Generate, serve, call, import, compare, and refresh MCP packages; `build` also syncs the generated Python API execution layer. |
 | `site-agent ansible` | `build` | Generate an Ansible collection from synthesized tools and API spec. |
-| `site-agent explorer` | `build`, `serve` | Build and serve a static semantic API explorer. |
+| `site-agent explorer` | `build`, `serve` | Build and serve a static semantic API explorer with resizable and collapsible regions. |
 | `site-agent drift` | `check` | Compare latest crawl snapshots for UI drift. |
 | `site-agent ai` | `analyze` | Build an AI analysis report for a profile. |
 | `site-agent debug` | `report` | Explain state classification, evidence coverage, and mapping gaps. |
@@ -97,7 +97,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `site_agent/core/drift/reuse.py` | Adapter reuse analysis for selector changes that preserve semantics, state path, and visual position. |
 | `site_agent/core/quality.py` | Contract quality, coverage comparison, crawl memory, and quality gate reports. |
 | `site_agent/core/debug.py` | Debug report for states, evidence coverage, and ontology gaps. |
-| `site_agent/core/explorer.py` | Static semantic explorer data and HTML writer. |
+| `site_agent/core/explorer.py` | Static semantic explorer data and HTML writer, including splitter controls for generated explorer regions. |
 | `site_agent/core/package.py` | Profile knowledge package assembly, RAG chunks, checksums, and zip bundles. |
 | `site_agent/core/doctor.py` | Local dependency and Playwright readiness checks. |
 | `site_agent/core/completion.py` | Shell completion generation and dynamic profile-name completion. |
@@ -129,7 +129,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `scripts/run-mock-staged-actions-e2e.sh` | Browser-backed staged action apply test against the mock app container. |
 | `scripts/run-mock-container.sh` | Build and run the OpsBoard mock app container. |
 | `scripts/run-openai-ai-smoke.sh` | Bounded OpenAI backend smoke test for term extraction, alignment, field/action classification, and research. |
-| `scripts/run-router-integration.sh` | Opt-in live router read-only integration workflow using the ZTE example profile. |
+| `scripts/run-router-integration.sh` | Opt-in live router read-only integration workflow using the ZTE example profile; builds the explorer and sanitized MCP smoke reports. |
 | `scripts/run-router-port-forward-live-test.sh` | Guarded live router staged write test wrapper. |
 | `scripts/router_port_forward_live_check.py` | Playwright routine for guarded port-forwarding plan/apply/debug/cleanup checks. |
 | `scripts/zte-router-smoke.sh` | Curl-based ZTE router login smoke test. |
