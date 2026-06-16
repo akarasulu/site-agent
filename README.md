@@ -1,6 +1,6 @@
 # site-agent
 
-`site-agent` is a generic, domain-aware website interaction mapper. It creates target profiles, crawls browser applications, extracts forms and actions, aligns UI evidence to domain terms, and generates stable automation surfaces: a Python API, an MCP server, and an Ansible collection.
+`site-agent` is a generic, domain-aware website interaction mapper. It creates target profiles, crawls browser applications, extracts forms and actions, aligns UI evidence to domain terms, and generates stable automation surfaces: a Python API, an MCP server, an Ansible collection, OpenAPI/Postman docs, and an explorer portal.
 
 The project core is product-agnostic. Target-specific behavior belongs in profiles and adapters.
 
@@ -51,6 +51,7 @@ site-agent api build --profile my-site
 site-agent mcp build --profile my-site
 site-agent docs build --profile my-site
 site-agent api serve --profile my-site
+site-agent explorer serve --profile my-site
 site-agent mcp serve --profile my-site
 site-agent ansible build --profile my-site
 site-agent config save --profile my-site --repo ../my-site-settings --commit --tag v1
@@ -65,8 +66,8 @@ That primary workflow is intentionally short:
 3. Gather documentation when the target has manuals, support pages, or guides.
 4. Crawl the UI and extract pages, forms, fields, actions, and dynamic flows.
 5. Review AI-assisted mappings and approve low-confidence items.
-6. Generate the Python API, MCP server, OpenAPI/Postman docs, and Ansible
-   collection from the approved model.
+6. Generate the Python API, MCP server, OpenAPI/Postman docs, explorer portal,
+   and Ansible collection from the approved model.
 7. Snapshot configuration into a dedicated settings repository when desired.
 8. Build a package containing evidence, schema, generated contracts, reports, and RAG chunks.
 9. Re-run drift and quality checks when the UI changes.
@@ -278,15 +279,23 @@ site-agent docs build --profile my-site
 ```
 
 That writes OpenAPI 3.1, a Postman collection, a Postman environment, and a
-generated API reference under `output/my-site/docs/` and
-`output/my-site/postman/`. The OpenAPI contract describes the selector-free
-site-agent API bridge, not raw website selectors.
+generated API reference plus quickstart, Python, MCP, and Ansible docs under
+`output/my-site/docs/` and `output/my-site/postman/`. The OpenAPI contract
+describes the selector-free site-agent API bridge, not raw website selectors.
 
 Serve the generated local HTTP bridge when you want Swagger UI or Postman to
 try requests:
 
 ```bash
 site-agent api serve --profile my-site
+```
+
+Build or serve the generated explorer portal when you want Swagger, Postman,
+Python, MCP, Ansible, and audit links in one browser view:
+
+```bash
+site-agent explorer build --profile my-site
+site-agent explorer serve --profile my-site
 ```
 
 The bridge exposes `GET /health`, `GET /openapi.json`, and
@@ -352,12 +361,19 @@ package:
 output/my-site/docs/openapi.json
 output/my-site/docs/openapi.yaml
 output/my-site/docs/api-reference.md
+output/my-site/docs/quickstart.md
+output/my-site/docs/python-api.md
+output/my-site/docs/mcp-tools.md
+output/my-site/docs/ansible-collection.md
 output/my-site/postman/collection.json
 output/my-site/postman/environment.json
+output/my-site/explorer/index.html
+output/my-site/explorer/swagger.html
 ```
 
 Use `site-agent api serve --profile my-site` to run the local bridge behind
-those docs.
+those docs, and `site-agent explorer serve --profile my-site` to open the
+consumer-facing portal.
 
 ### MCP Server
 

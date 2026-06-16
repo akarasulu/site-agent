@@ -509,6 +509,8 @@ def test_package_build_creates_rag_bundle_with_private_boundary(tmp_path, monkey
     assert manifest["counts"]["tools"] > 0
     assert manifest["counts"]["api_methods"] > 0
     assert manifest["counts"]["ansible_modules"] > 0
+    assert manifest["counts"]["docs"] > 0
+    assert manifest["counts"]["postman"] == 2
     assert manifest["counts"]["rag_chunks"] > 0
     assert manifest["artifact_classes"]["public"]["safe_for_agent_context"]
     assert not manifest["artifact_classes"]["private"]["safe_for_agent_context"]
@@ -517,6 +519,10 @@ def test_package_build_creates_rag_bundle_with_private_boundary(tmp_path, monkey
     assert (package_dir / "public/mcp/tools.json").exists()
     assert (package_dir / "public/api/api-spec.json").exists()
     assert (package_dir / "public/ansible/ansible-spec.json").exists()
+    assert (package_dir / "public/docs/openapi.json").exists()
+    assert (package_dir / "public/docs/python-api.md").exists()
+    assert (package_dir / "public/postman/collection.json").exists()
+    assert (package_dir / "public/postman/environment.json").exists()
     assert (package_dir / "private/adapter.bindings.json").exists()
     assert (Path("output/opsboard/packages") / f"{package_dir.name}.zip").exists()
     assert_generated_schema_invariants(Path("output/opsboard"))

@@ -1587,6 +1587,8 @@ def cmd_package_build(args: argparse.Namespace) -> int:
     print(
         "Package contents: "
         f"{manifest['counts']['tools']} tool(s), "
+        f"{manifest['counts']['docs']} doc artifact(s), "
+        f"{manifest['counts']['postman']} Postman artifact(s), "
         f"{manifest['counts']['rag_chunks']} RAG chunk(s), "
         f"{manifest['counts']['reports']} report(s)."
     )
@@ -1597,8 +1599,10 @@ def cmd_package_build(args: argparse.Namespace) -> int:
 def cmd_explorer_build(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
     snapshot = load_synthesis_snapshot(profile.name)
+    write_api_documentation_bundle(workspace(), profile)
     explorer_dir, data = write_explorer(workspace(), profile, snapshot)
     print(f"Built semantic API explorer: {explorer_dir / 'index.html'}")
+    print(f"Built Swagger UI view: {explorer_dir / 'swagger.html'}")
     print(
         "Explorer contents: "
         f"{data['summary']['methods']} method(s), "
@@ -1616,6 +1620,7 @@ def cmd_explorer_serve(args: argparse.Namespace) -> int:
 
     profile = load_profile(workspace(), args.profile)
     snapshot = load_synthesis_snapshot(profile.name)
+    write_api_documentation_bundle(workspace(), profile)
     explorer_dir, data = write_explorer(workspace(), profile, snapshot)
     port = args.port
     while True:

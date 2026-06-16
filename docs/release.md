@@ -4,6 +4,16 @@
 
 ## Release Notes
 
+### 1.14.0
+
+- Rework the generated explorer into a consumer-facing API portal with
+  Overview, API, Python, MCP, Ansible, Postman, and Audit tabs.
+- Add `swagger.html` plus local explorer artifact copies for OpenAPI,
+  generated Markdown docs, and Postman collection/environment files.
+- Generate quickstart, Python API, MCP, and Ansible Markdown docs alongside
+  the OpenAPI/Postman bundle.
+- Include generated docs and Postman artifacts in profile knowledge packages.
+
 ### 1.13.0
 
 - Add `site-agent api serve` to expose generated methods over a local HTTP

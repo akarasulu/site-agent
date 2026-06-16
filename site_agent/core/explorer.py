@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import html
-import json
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +27,43 @@ GROUPS = [
     ("VoIP", ("voip_",)),
     ("Management / Diagnostics", ("management_",)),
 ]
+
+
+SURFACE_ARTIFACTS = [
+    ("openapi_json", ("docs", "openapi.json"), "artifacts/openapi.json", "OpenAPI JSON", "api"),
+    ("openapi_yaml", ("docs", "openapi.yaml"), "artifacts/openapi.yaml", "OpenAPI YAML", "api"),
+    ("api_reference", ("docs", "api-reference.md"), "artifacts/api-reference.md", "API Reference", "docs"),
+    ("quickstart", ("docs", "quickstart.md"), "artifacts/quickstart.md", "Quickstart", "docs"),
+    ("python_api", ("docs", "python-api.md"), "artifacts/python-api.md", "Python API", "docs"),
+    ("mcp_tools", ("docs", "mcp-tools.md"), "artifacts/mcp-tools.md", "MCP Tools", "docs"),
+    ("ansible_collection", ("docs", "ansible-collection.md"), "artifacts/ansible-collection.md", "Ansible Collection", "docs"),
+    ("postman_collection", ("postman", "collection.json"), "artifacts/postman-collection.json", "Postman Collection", "postman"),
+    ("postman_environment", ("postman", "environment.json"), "artifacts/postman-environment.json", "Postman Environment", "postman"),
+]
+
+
+def surface_artifact_entries(root: Path) -> dict[str, dict[str, Any]]:
+    entries = {}
+    for key, source_parts, relative_path, title, kind in SURFACE_ARTIFACTS:
+        source = root.joinpath(*source_parts)
+        if source.exists():
+            entries[key] = {
+                "href": relative_path,
+                "title": title,
+                "kind": kind,
+                "bytes": source.stat().st_size,
+            }
+    return entries
+
+
+def copy_surface_artifacts(root: Path, explorer_dir: Path) -> None:
+    ensure_dir(explorer_dir / "artifacts")
+    for _key, source_parts, relative_path, _title, _kind in SURFACE_ARTIFACTS:
+        source = root.joinpath(*source_parts)
+        if source.exists():
+            destination = explorer_dir / relative_path
+            ensure_dir(destination.parent)
+            shutil.copy2(source, destination)
 
 
 def method_group(name: str) -> str:
@@ -175,6 +211,8 @@ def build_explorer_data(profile: Profile, snapshot: CrawlSnapshot, root: Path) -
     bindings = read_json(root / "mcp" / "adapter.bindings.json").get("bindings", [])
     api_path = root / "api" / "api-spec.json"
     api_methods = read_json(api_path).get("methods", []) if api_path.exists() else []
+    ansible_path = root / "ansible" / "ansible-spec.json"
+    ansible_spec = read_json(ansible_path) if ansible_path.exists() else {}
     capabilities_path = root / "capabilities" / "capabilities.json"
     capabilities = read_json(capabilities_path) if capabilities_path.exists() else {}
     bindings_by_tool = {binding.get("tool_name"): binding for binding in bindings}
@@ -182,6 +220,7 @@ def build_explorer_data(profile: Profile, snapshot: CrawlSnapshot, root: Path) -
     pages_by_id = page_lookup(snapshot)
     elements_by_id = element_lookup(snapshot)
     forms_by_id = form_lookup(snapshot)
+    artifacts = surface_artifact_entries(root)
     methods: list[dict[str, Any]] = []
     for method in sorted(api_methods, key=lambda item: item.get("name", "")):
         name = method.get("name", "")
@@ -230,6 +269,10 @@ def build_explorer_data(profile: Profile, snapshot: CrawlSnapshot, root: Path) -
         "profile": {"id": profile.id, "name": profile.name, "base_url": profile.base_url},
         "summary": {
             "methods": len(methods),
+            "public_tools": len([tool for tool in tools if tool.get("exposure_level") != "internal_disabled"]),
+            "ansible_modules": len(ansible_spec.get("modules", [])),
+            "docs": len([entry for entry in artifacts.values() if entry["kind"] in {"api", "docs"}]),
+            "postman": len([entry for entry in artifacts.values() if entry["kind"] == "postman"]),
             "pages": len(snapshot.pages),
             "forms": len(snapshot.forms),
             "elements": len(snapshot.elements),
@@ -237,6 +280,25 @@ def build_explorer_data(profile: Profile, snapshot: CrawlSnapshot, root: Path) -
         },
         "tree": semantic_tree(methods),
         "methods": methods,
+        "artifacts": artifacts,
+        "mcp": {
+            "tools": [
+                {
+                    "name": tool.get("name"),
+                    "description": tool.get("description", ""),
+                    "risk_level": tool.get("risk_level", "low"),
+                    "source_type": tool.get("source_type", "canonical_concept"),
+                    "evidence_ids": tool.get("evidence_ids", []),
+                }
+                for tool in sorted(tools, key=lambda item: item.get("name", ""))
+                if tool.get("exposure_level") != "internal_disabled"
+            ]
+        },
+        "ansible": {
+            "namespace": ansible_spec.get("namespace", "site_agent"),
+            "name": ansible_spec.get("name"),
+            "modules": ansible_spec.get("modules", []),
+        },
         "capabilities": capabilities.get("projection_report", {}),
     }
 
@@ -251,11 +313,17 @@ EXPLORER_HTML = r"""<!doctype html>
 :root { color-scheme: light; --ink:#17202a; --muted:#5d6978; --line:#d9dee6; --blue:#1267b1; --green:#19775c; --red:#a33a3a; --bg:#f6f8fb; --panel:#fff; }
 * { box-sizing: border-box; }
 body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
-header { height:58px; display:flex; align-items:center; gap:18px; padding:0 20px; border-bottom:1px solid var(--line); background:#fff; position:sticky; top:0; z-index:5; }
+header { min-height:58px; display:flex; align-items:center; gap:18px; padding:8px 20px; border-bottom:1px solid var(--line); background:#fff; position:sticky; top:0; z-index:5; }
 h1 { font-size:18px; margin:0; }
 .meta { color:var(--muted); font-size:13px; }
+.tabs { display:flex; flex-wrap:wrap; gap:6px; margin-left:auto; }
+.tab { background:#fff; border:1px solid var(--line); border-radius:6px; color:var(--ink); cursor:pointer; font-size:13px; padding:7px 10px; }
+.tab:hover, .tab.active { background:#eaf3fb; border-color:#9bc5e7; color:#0d5d9f; }
 .load-error { margin:18px; padding:14px; border:1px solid #e3aaaa; background:#fff4f4; color:#8d2929; border-radius:8px; }
 .shell { --nav-width:330px; --detail-width:420px; display:grid; grid-template-columns: var(--nav-width) 10px minmax(420px, 1fr) 10px var(--detail-width); min-height:calc(100vh - 58px); }
+.shell.portal-mode { display:block; }
+.shell.portal-mode aside, .shell.portal-mode .splitter, .shell.portal-mode section.detail { display:none; }
+.shell.portal-mode main { max-width:1180px; margin:0 auto; }
 .shell.nav-collapsed { --nav-width:0px; }
 .shell.detail-collapsed { --detail-width:0px; }
 aside, main, section { min-width:0; }
@@ -279,6 +347,20 @@ summary { cursor:pointer; font-weight:650; font-size:14px; }
 .cards { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px; margin-bottom:16px; }
 .card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px; }
 .card b { display:block; font-size:22px; }
+.portal { background:#fff; border:1px solid var(--line); border-radius:8px; padding:18px; }
+.portal h2 { font-size:20px; margin:0 0 8px; }
+.portal h3 { font-size:15px; margin:20px 0 8px; }
+.portal p { color:var(--muted); margin:0 0 14px; max-width:860px; }
+.doc-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; margin:14px 0; }
+.doc-card { border:1px solid var(--line); border-radius:8px; padding:12px; background:#fbfcfe; }
+.doc-card b { display:block; margin-bottom:6px; }
+.actions { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.button-link { align-items:center; background:#1267b1; border:1px solid #1267b1; border-radius:6px; color:#fff; display:inline-flex; font-size:13px; min-height:34px; padding:7px 11px; text-decoration:none; }
+.button-link.secondary { background:#fff; color:#1267b1; }
+.cmd { background:#17202a; border-radius:6px; color:#f8fbff; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; padding:12px; white-space:pre-wrap; }
+.table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+.table th, .table td { border-bottom:1px solid var(--line); padding:8px; text-align:left; vertical-align:top; }
+.table th { color:#425166; font-size:12px; }
 .view { background:#fff; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
 .view-head { padding:14px 16px; border-bottom:1px solid var(--line); display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
 .view-title { font-size:18px; font-weight:700; }
@@ -314,11 +396,22 @@ summary { cursor:pointer; font-weight:650; font-size:14px; }
 .chips { display:flex; flex-wrap:wrap; gap:6px; }
 .chip { border:1px solid var(--line); border-radius:999px; padding:3px 7px; font-size:12px; background:#fbfcfe; }
 pre { white-space:pre-wrap; word-break:break-word; background:#f7f9fc; border:1px solid var(--line); border-radius:6px; padding:10px; font-size:12px; }
-@media (max-width: 1100px) { .shell { display:block; } aside, section.detail { border:0; } .splitter, .canvas-splitter { display:none; } .canvas { display:block; } .canvas > .page, .canvas > .anno-list { margin:0 0 16px; } }
+@media (max-width: 1100px) { .shell { display:block; } aside, section.detail { border:0; } .splitter, .canvas-splitter { display:none; } .canvas { display:block; } .canvas > .page, .canvas > .anno-list { margin:0 0 16px; } .doc-grid { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
-<header><h1>Semantic API Explorer</h1><span class="meta" id="profile"></span></header>
+<header>
+  <h1>Generated API Explorer</h1><span class="meta" id="profile"></span>
+  <nav class="tabs" aria-label="Explorer sections">
+    <button class="tab" type="button" data-tab="overview" onclick="setTab('overview')">Overview</button>
+    <button class="tab" type="button" data-tab="api" onclick="setTab('api')">API</button>
+    <button class="tab" type="button" data-tab="python" onclick="setTab('python')">Python</button>
+    <button class="tab" type="button" data-tab="mcp" onclick="setTab('mcp')">MCP</button>
+    <button class="tab" type="button" data-tab="ansible" onclick="setTab('ansible')">Ansible</button>
+    <button class="tab" type="button" data-tab="postman" onclick="setTab('postman')">Postman</button>
+    <button class="tab" type="button" data-tab="audit" onclick="setTab('audit')">Audit</button>
+  </nav>
+</header>
 <div class="shell" id="shell">
 <aside><input class="search" id="q" placeholder="Filter capabilities"><div id="tree"></div></aside>
 <button class="splitter" type="button" data-pane="nav" title="Drag to resize, double-click to collapse or restore the capability list" aria-label="Resize capability list"></button>
@@ -328,9 +421,13 @@ pre { white-space:pre-wrap; word-break:break-word; background:#f7f9fc; border:1p
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
-let DATA, selected;
+let DATA, selected, currentTab = localStorage.getItem('siteAgentExplorer.tab') || 'overview';
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function risk(r){ return `<span class="risk ${esc(r)}">${esc(r)}</span>`; }
+function shellQuote(s){
+  const value = String(s ?? '');
+  return /^[A-Za-z0-9_./:-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
 const layoutState = {
   navWidth: Number(localStorage.getItem('siteAgentExplorer.navWidth')) || 330,
   detailWidth: Number(localStorage.getItem('siteAgentExplorer.detailWidth')) || 420,
@@ -470,8 +567,158 @@ function renderCards(){
     ['UI Elements', DATA.summary.elements],
   ].map(([k,v]) => `<div class="card"><span class="meta">${k}</span><b>${v}</b></div>`).join('');
 }
+function artifact(key){
+  return DATA.artifacts?.[key];
+}
+function artifactButton(key, label, secondary=false){
+  const item = artifact(key);
+  if (!item) return `<span class="meta">${esc(label)} not generated yet</span>`;
+  return `<a class="button-link ${secondary ? 'secondary' : ''}" href="${esc(item.href)}" target="_blank" rel="noreferrer">${esc(label)}</a>`;
+}
+function docCard(title, body, links){
+  return `<div class="doc-card"><b>${esc(title)}</b><p>${esc(body)}</p><div class="actions">${links.join('')}</div></div>`;
+}
+function portalCards(){
+  $('cards').innerHTML = [
+    ['API Methods', DATA.summary.methods],
+    ['MCP Tools', DATA.summary.public_tools],
+    ['Ansible Modules', DATA.summary.ansible_modules],
+    ['Docs', DATA.summary.docs + DATA.summary.postman],
+  ].map(([k,v]) => `<div class="card"><span class="meta">${k}</span><b>${v}</b></div>`).join('');
+}
+function commandBlock(lines){
+  return `<div class="cmd">${esc(lines.join('\n'))}</div>`;
+}
+function operationRows(limit=14){
+  const rows = DATA.methods.slice(0, limit).map(m => `
+    <tr><td><code>${esc(m.name)}</code></td><td>${risk(m.risk_level || 'low')}</td><td><code>${esc(m.backing_tool)}</code></td><td>${esc((m.args || []).join(', ') || 'none')}</td></tr>`).join('');
+  return `<table class="table"><thead><tr><th>Method</th><th>Risk</th><th>Backing Tool</th><th>Arguments</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function mcpRows(limit=16){
+  const rows = (DATA.mcp?.tools || []).slice(0, limit).map(t => `
+    <tr><td><code>${esc(t.name)}</code></td><td>${risk(t.risk_level || 'low')}</td><td>${esc(t.source_type || '')}</td><td>${esc((t.evidence_ids || []).join(', ') || 'none')}</td></tr>`).join('');
+  return `<table class="table"><thead><tr><th>Tool</th><th>Risk</th><th>Source</th><th>Evidence</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function ansibleRows(limit=16){
+  const rows = (DATA.ansible?.modules || []).slice(0, limit).map(m => `
+    <tr><td><code>${esc(m.name)}</code></td><td>${esc(String(m.supports_check_mode ?? false))}</td><td>${esc(m.idempotence_level || 'none')}</td><td>${risk(m.risk_level || 'low')}</td></tr>`).join('');
+  return `<table class="table"><thead><tr><th>Module</th><th>Check Mode</th><th>Idempotence</th><th>Risk</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="meta">No generated Ansible modules yet.</td></tr>'}</tbody></table>`;
+}
+function renderOverview(){
+  return `<div class="portal">
+    <h2>${esc(DATA.profile.name)} generated automation surfaces</h2>
+    <p>Start with the local API bridge, then use Swagger UI, Postman, Python, MCP, or Ansible from the same approved schema.</p>
+    <div class="actions">
+      <a class="button-link" href="swagger.html" target="_blank" rel="noreferrer">Swagger UI</a>
+      ${artifactButton('openapi_json', 'OpenAPI JSON', true)}
+      ${artifactButton('postman_collection', 'Postman Collection', true)}
+    </div>
+    ${commandBlock([
+      `site-agent api serve --profile ${shellQuote(DATA.profile.name)}`,
+      `site-agent explorer serve --profile ${shellQuote(DATA.profile.name)}`,
+    ])}
+    <div class="doc-grid">
+      ${docCard('HTTP API', 'OpenAPI contract for the generated local bridge.', [artifactButton('api_reference', 'Reference'), artifactButton('openapi_yaml', 'YAML', true)])}
+      ${docCard('Python API', 'Typed selector-free package backed by generated runtime metadata.', [artifactButton('python_api', 'Python Docs')])}
+      ${docCard('MCP Tools', 'Agent-facing tools with risk and evidence metadata.', [artifactButton('mcp_tools', 'MCP Docs')])}
+      ${docCard('Ansible', 'Generated collection for evidenced read/update operations.', [artifactButton('ansible_collection', 'Ansible Docs')])}
+      ${docCard('Postman', 'Importable collection and environment for generated HTTP calls.', [artifactButton('postman_collection', 'Collection'), artifactButton('postman_environment', 'Environment', true)])}
+      ${docCard('Audit View', 'Evidence, UI snapshots, and adapter context for reviewers.', [`<button class="tab" type="button" onclick="setTab('audit')">Open Audit</button>`])}
+    </div>
+  </div>`;
+}
+function renderApi(){
+  return `<div class="portal">
+    <h2>Generated HTTP API</h2>
+    <p>The local bridge exposes POST endpoints under <code>/methods/&lt;method&gt;</code> and defaults examples to dry-run mode.</p>
+    <div class="actions"><a class="button-link" href="swagger.html" target="_blank" rel="noreferrer">Open Swagger UI</a>${artifactButton('openapi_json', 'OpenAPI JSON', true)}${artifactButton('api_reference', 'Markdown Reference', true)}</div>
+    ${commandBlock([`site-agent api serve --profile ${shellQuote(DATA.profile.name)}`])}
+    ${operationRows()}
+  </div>`;
+}
+function renderPython(){
+  const packageName = (DATA.artifacts?.python_api ? `${DATA.profile.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}_client` : 'generated_client');
+  return `<div class="portal">
+    <h2>Python API</h2>
+    <p>Use the generated package as the shared execution layer for scripts, MCP, and higher-level automation.</p>
+    <div class="actions">${artifactButton('python_api', 'Python API Docs')}${artifactButton('api_reference', 'HTTP Reference', true)}</div>
+    ${commandBlock([
+      `site-agent api build --profile ${shellQuote(DATA.profile.name)}`,
+      `python -m pip install -e ${shellQuote(`output/${DATA.profile.name}/api`)}`,
+      `python -c "from ${packageName} import *; print('client ready')"`,
+    ])}
+    ${operationRows()}
+  </div>`;
+}
+function renderMcp(){
+  return `<div class="portal">
+    <h2>MCP Tools</h2>
+    <p>Serve the generated MCP package or emit reusable client configuration for agent clients.</p>
+    <div class="actions">${artifactButton('mcp_tools', 'MCP Docs')}${artifactButton('api_reference', 'Backing API Reference', true)}</div>
+    ${commandBlock([
+      `site-agent mcp serve --profile ${shellQuote(DATA.profile.name)}`,
+      `site-agent mcp import --profile ${shellQuote(DATA.profile.name)} --target json`,
+      `site-agent mcp import --profile ${shellQuote(DATA.profile.name)} --target codex --apply`,
+    ])}
+    ${mcpRows()}
+  </div>`;
+}
+function renderAnsible(){
+  return `<div class="portal">
+    <h2>Ansible Collection</h2>
+    <p>Generated modules wrap the Python API where the approved model has enough evidence for facts or idempotent updates.</p>
+    <div class="actions">${artifactButton('ansible_collection', 'Ansible Docs')}</div>
+    ${commandBlock([
+      `site-agent ansible build --profile ${shellQuote(DATA.profile.name)}`,
+      `ANSIBLE_COLLECTIONS_PATH=${shellQuote(`output/${DATA.profile.name}/ansible`)} ansible-doc -l site_agent.${DATA.ansible?.name || DATA.profile.name}`,
+    ])}
+    ${ansibleRows()}
+  </div>`;
+}
+function renderPostman(){
+  return `<div class="portal">
+    <h2>Postman</h2>
+    <p>Import both generated files, start the local bridge, then run requests against <code>{{baseUrl}}</code>.</p>
+    <div class="actions">${artifactButton('postman_collection', 'Download Collection')}${artifactButton('postman_environment', 'Download Environment', true)}${artifactButton('openapi_json', 'OpenAPI Import', true)}</div>
+    ${commandBlock([`site-agent api serve --profile ${shellQuote(DATA.profile.name)}`])}
+    ${operationRows(10)}
+  </div>`;
+}
+function renderPortal(){
+  portalCards();
+  $('tree').innerHTML = '';
+  $('detail').innerHTML = '';
+  const renderers = {overview: renderOverview, api: renderApi, python: renderPython, mcp: renderMcp, ansible: renderAnsible, postman: renderPostman};
+  $('view').innerHTML = (renderers[currentTab] || renderOverview)();
+}
+function renderTabs(){
+  document.querySelectorAll('.tab[data-tab]').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === currentTab));
+}
+function setTab(tab){
+  currentTab = tab;
+  localStorage.setItem('siteAgentExplorer.tab', currentTab);
+  renderView();
+}
 function renderView(){
+  renderTabs();
+  const shell = $('shell');
+  shell.classList.toggle('portal-mode', currentTab !== 'audit');
+  if (currentTab !== 'audit') {
+    renderPortal();
+    return;
+  }
+  renderCards();
+  renderTree($('q').value);
+  if (!selected) selected = DATA.methods[0];
+  renderAuditView();
+}
+function renderAuditView(){
   const m = selected;
+  if (!m) {
+    $('view').innerHTML = '<div class="portal"><h2>No generated methods</h2><p>Build the API and MCP surfaces, then rebuild the explorer.</p></div>';
+    $('detail').innerHTML = '';
+    return;
+  }
   const ui = m.ui || {};
   const annotations = ui.annotations || [];
   const headings = ui.headings?.length ? ui.headings : [ui.page_label, ui.purpose_label].filter(Boolean);
@@ -519,9 +766,7 @@ fetch('explorer-data.json').then(r => r.json()).then(data => {
   $('profile').textContent = `${data.profile.name} · ${data.profile.base_url}`;
   applyShellLayout();
   setupShellSplitters();
-  renderCards();
   selected = data.methods[0];
-  renderTree();
   renderView();
   $('q').addEventListener('input', e => renderTree(e.target.value));
 }).catch(err => {
@@ -537,11 +782,44 @@ fetch('explorer-data.json').then(r => r.json()).then(data => {
 """
 
 
+SWAGGER_HTML = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generated API Swagger UI</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+<style>
+body { margin:0; background:#fff; }
+.topbar { display:none; }
+</style>
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+window.addEventListener('load', () => {
+  SwaggerUIBundle({
+    url: 'artifacts/openapi.json',
+    dom_id: '#swagger-ui',
+    deepLinking: true,
+    displayRequestDuration: true,
+    tryItOutEnabled: true,
+  });
+});
+</script>
+</body>
+</html>
+"""
+
+
 def write_explorer(workspace: Path, profile: Profile, snapshot: CrawlSnapshot) -> tuple[Path, dict[str, Any]]:
     root = output_root(workspace, profile.name)
     explorer_dir = root / "explorer"
     ensure_dir(explorer_dir)
     data = build_explorer_data(profile, snapshot, root)
+    copy_surface_artifacts(root, explorer_dir)
     write_json(explorer_dir / "explorer-data.json", data)
     (explorer_dir / "index.html").write_text(EXPLORER_HTML, encoding="utf-8")
+    (explorer_dir / "swagger.html").write_text(SWAGGER_HTML, encoding="utf-8")
     return explorer_dir, data

@@ -39,7 +39,7 @@ flowchart LR
   Output --> API[Generated Python API]
   Output --> MCP[Generated MCP package]
   Output --> Ansible[Generated Ansible collection]
-  Output --> APIDocs[OpenAPI and Postman docs]
+  Output --> APIDocs[OpenAPI, Postman, and surface docs]
   Output --> Reports[Reports and packages]
   CLI --> SettingsRepo[User settings git repo]
 ```
@@ -68,7 +68,7 @@ flowchart TD
   Capabilities --> APISynth[Python API synthesis]
   Capabilities --> MCPSynth[MCP synthesis]
   Capabilities --> AnsibleSynth[Ansible synthesis]
-  Capabilities --> DocsSynth[OpenAPI and Postman docs]
+  Capabilities --> DocsSynth[OpenAPI, Postman, and surface docs]
   Snapshot --> Config[Configuration snapshot]
   Schema --> Config
   MCPSynth --> Config
@@ -196,15 +196,17 @@ flowchart LR
   Bindings --> MCP
   API --> Ansible[Ansible collection]
   Tools --> Contracts[MCP contract diffing]
-  Tools --> APIDocs[OpenAPI and Postman docs]
+  Tools --> APIDocs[OpenAPI, Postman, and surface docs]
+  APIDocs --> Explorer[Explorer API portal]
 ```
 
 The generated Python API is intended to be the shared execution layer for higher
 surfaces. MCP and Ansible generation currently use the same tool model and
 should delegate to generated Python API behavior where practical.
-Generated OpenAPI and Postman artifacts document the selector-free local API
-bridge contract and carry site-agent evidence, risk, and backing-tool metadata
-through OpenAPI extensions.
+Generated OpenAPI, Postman, quickstart, Python, MCP, and Ansible artifacts
+document the selector-free local API bridge and generated automation surfaces.
+The generated explorer publishes those artifacts as a consumer-facing portal
+while retaining the evidence-heavy UI/adapter browser under its Audit tab.
 
 The local API bridge lives in `site_agent/core/synthesize/http_api.py` and is
 served by `site-agent api serve`. It exposes health, OpenAPI, and generated

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,7 @@ from uuid import NAMESPACE_URL, uuid5
 from site_agent.core.models import to_jsonable, utc_now
 from site_agent.core.profiles import Profile, output_root
 from site_agent.core.storage import ensure_dir, read_json, write_json
-from site_agent.core.synthesize.api import build_api_spec
+from site_agent.core.synthesize.api import api_package_name, build_api_spec, class_name as api_client_class_name
 
 
 DEFAULT_API_BRIDGE_URL = "http://127.0.0.1:8766"
@@ -21,6 +22,10 @@ SOURCE_TYPE_TAGS = {
     "ui_form": "Form Actions",
     "ui_flow": "Staged Workflows",
 }
+
+
+def _shell(value: str) -> str:
+    return shlex.quote(value)
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -351,12 +356,129 @@ def build_api_reference_markdown(
         "* `../postman/environment.json`: Postman environment with `baseUrl`.\n\n"
         "## Run The Local API Bridge\n\n"
         "```bash\n"
-        f"site-agent api serve --profile {profile.name}\n"
+        f"site-agent api serve --profile {_shell(profile.name)}\n"
         "```\n\n"
         "Requests default to `dry-run`. Use `apply` only when the profile risk "
         "policy, operation metadata, and confirmation rules allow it.\n\n"
         "## Operations\n\n"
         f"{rows}\n"
+    )
+
+
+def build_quickstart_markdown(profile: Profile) -> str:
+    return (
+        f"# {profile.name} Generated Automation Quickstart\n\n"
+        "Run the local API bridge before using Swagger UI or Postman:\n\n"
+        "```bash\n"
+        f"site-agent api serve --profile {_shell(profile.name)}\n"
+        "```\n\n"
+        "Build or refresh all generated surfaces:\n\n"
+        "```bash\n"
+        f"site-agent api build --profile {_shell(profile.name)}\n"
+        f"site-agent mcp build --profile {_shell(profile.name)}\n"
+        f"site-agent docs build --profile {_shell(profile.name)}\n"
+        f"site-agent ansible build --profile {_shell(profile.name)}\n"
+        f"site-agent explorer build --profile {_shell(profile.name)}\n"
+        "```\n"
+    )
+
+
+def build_python_api_markdown(profile: Profile, api_spec: dict[str, Any]) -> str:
+    package_name = api_spec.get("package_name") or api_package_name(profile.name)
+    client_class = api_client_class_name(profile.name)
+    rows = [
+        "| Method | Risk | Evidence |",
+        "| --- | --- | --- |",
+    ]
+    for method in sorted(api_spec.get("methods", []), key=lambda item: item.get("name", "")):
+        rows.append(
+            "| `{}` | `{}` | {} |".format(
+                method.get("name"),
+                method.get("risk_level", "low"),
+                ", ".join(method.get("evidence_ids", [])) or "none",
+            )
+        )
+    first_method = (api_spec.get("methods") or [{"name": "call_tool"}])[0]["name"]
+    return (
+        f"# {profile.name} Python API\n\n"
+        "The generated Python API is the selector-free execution layer for this "
+        "profile. Public methods delegate to generated runtime metadata and keep "
+        "browser selectors private.\n\n"
+        "```python\n"
+        f"from {package_name} import {client_class}\n\n"
+        f"client = {client_class}.from_profile('profiles/{profile.name}')\n"
+        f"result = client.{first_method}()\n"
+        "```\n\n"
+        "## Methods\n\n"
+        + "\n".join(rows)
+        + "\n"
+    )
+
+
+def build_mcp_markdown(profile: Profile, tools: list[dict[str, Any]]) -> str:
+    rows = [
+        "| Tool | Risk | Source | Evidence |",
+        "| --- | --- | --- | --- |",
+    ]
+    for tool in sorted(_public_tools(tools), key=lambda item: item.get("name", "")):
+        rows.append(
+            "| `{}` | `{}` | `{}` | {} |".format(
+                tool.get("name"),
+                tool.get("risk_level", "low"),
+                tool.get("source_type", "canonical_concept"),
+                ", ".join(tool.get("evidence_ids", [])) or "none",
+            )
+        )
+    return (
+        f"# {profile.name} MCP Tools\n\n"
+        "Serve the generated MCP package locally:\n\n"
+        "```bash\n"
+        f"site-agent mcp serve --profile {_shell(profile.name)}\n"
+        "```\n\n"
+        "Emit reusable client configuration:\n\n"
+        "```bash\n"
+        f"site-agent mcp import --profile {_shell(profile.name)} --target json\n"
+        f"site-agent mcp import --profile {_shell(profile.name)} --target codex --apply\n"
+        "```\n\n"
+        "## Public Tools\n\n"
+        + "\n".join(rows)
+        + "\n"
+    )
+
+
+def build_ansible_markdown(profile: Profile, ansible_spec: dict[str, Any] | None) -> str:
+    if not ansible_spec:
+        return (
+            f"# {profile.name} Ansible Collection\n\n"
+            "No generated Ansible spec was found yet. Generate it with:\n\n"
+            "```bash\n"
+            f"site-agent ansible build --profile {_shell(profile.name)}\n"
+            "```\n"
+        )
+    rows = [
+        "| Module | Check mode | Idempotence | Risk | Evidence |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for module in sorted(ansible_spec.get("modules", []), key=lambda item: item.get("name", "")):
+        rows.append(
+            "| `{}` | `{}` | `{}` | `{}` | {} |".format(
+                module.get("name"),
+                module.get("supports_check_mode", False),
+                module.get("idempotence_level", "none"),
+                module.get("risk_level", "low"),
+                ", ".join(module.get("evidence_ids", [])) or "none",
+            )
+        )
+    return (
+        f"# {profile.name} Ansible Collection\n\n"
+        "Generated Ansible modules wrap the generated Python API where practical.\n\n"
+        "```bash\n"
+        f"site-agent ansible build --profile {_shell(profile.name)}\n"
+        f"ANSIBLE_COLLECTIONS_PATH={_shell(f'output/{profile.name}/ansible')} ansible-doc -l site_agent.{ansible_spec.get('name')}\n"
+        "```\n\n"
+        "## Modules\n\n"
+        + "\n".join(rows)
+        + "\n"
     )
 
 
@@ -377,6 +499,8 @@ def write_api_documentation_bundle(
         raise FileNotFoundError(f"No generated tools found. Run: site-agent mcp build --profile {profile.name}")
     tools = read_json(tools_path).get("tools", [])
     api_spec = _load_api_spec(profile.name, root, tools)
+    ansible_spec_path = root / "ansible" / "ansible-spec.json"
+    ansible_spec = read_json(ansible_spec_path) if ansible_spec_path.exists() else None
     openapi = build_openapi_spec(profile, tools, api_spec, api_bridge_url)
     collection = build_postman_collection(profile, tools, api_spec)
     environment = build_postman_environment(profile, api_bridge_url)
@@ -390,10 +514,21 @@ def write_api_documentation_bundle(
         build_api_reference_markdown(profile, tools, api_spec),
         encoding="utf-8",
     )
+    (docs_dir / "quickstart.md").write_text(build_quickstart_markdown(profile), encoding="utf-8")
+    (docs_dir / "python-api.md").write_text(build_python_api_markdown(profile, api_spec), encoding="utf-8")
+    (docs_dir / "mcp-tools.md").write_text(build_mcp_markdown(profile, tools), encoding="utf-8")
+    (docs_dir / "ansible-collection.md").write_text(
+        build_ansible_markdown(profile, ansible_spec),
+        encoding="utf-8",
+    )
     return {
         "openapi_json": docs_dir / "openapi.json",
         "openapi_yaml": docs_dir / "openapi.yaml",
         "api_reference": docs_dir / "api-reference.md",
+        "quickstart": docs_dir / "quickstart.md",
+        "python_api": docs_dir / "python-api.md",
+        "mcp_tools": docs_dir / "mcp-tools.md",
+        "ansible_collection": docs_dir / "ansible-collection.md",
         "postman_collection": postman_dir / "collection.json",
         "postman_environment": postman_dir / "environment.json",
     }

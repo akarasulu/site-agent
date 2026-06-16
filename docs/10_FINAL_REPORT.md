@@ -1,7 +1,7 @@
 # Final Report
 
 This report summarizes the current engineering state of `site-agent` after the
-research-backed implementation and documentation refresh through `v1.13.0`.
+research-backed implementation and documentation refresh through `v1.14.0`.
 
 ## Executive Summary
 
@@ -22,11 +22,11 @@ validation profiles rather than reusable core code.
 | Core data model | `site_agent/core/models.py` defines evidence, ontology, UI, crawl, mapping, tool, API, Ansible, and drift contracts. |
 | Browser execution | Playwright and optional Crawl4AI backends normalize into `CrawlSnapshot`. |
 | AI boundaries | AI backends exist, but public mappings still carry evidence and confidence gates. |
-| Generated surfaces | MCP, Python API, local API bridge, Ansible, OpenAPI/Postman docs, MCP import, contract diffing, runtime serving, and MCP-build Python API synchronization are implemented. |
+| Generated surfaces | MCP, Python API, local API bridge, Ansible, OpenAPI/Postman docs, generated surface docs, explorer portal, MCP import, contract diffing, runtime serving, and MCP-build Python API synchronization are implemented. |
 | Configuration versioning | Save, coverage, diff, restore-plan, restore-readiness, restore, and verification paths exist. |
 | Research-backed crawl intelligence | Evidence cache, visual page graph, adaptive gain scoring, drift-aware adapter reuse, and documentation clue mining are implemented. |
-| Explorer review surface | Generated semantic explorers include resizable and collapsible capability, detail, UI summary, captured HTML, and annotation regions. |
-| API documentation bundle | Generated profiles can emit OpenAPI 3.1, Postman collection/environment, and API reference Markdown artifacts. |
+| Explorer portal | Generated explorers default to consumer-facing API docs, Swagger, Python, MCP, Ansible, and Postman tabs, with the dense evidence browser retained under Audit. |
+| API documentation bundle | Generated profiles can emit OpenAPI 3.1, Postman collection/environment, quickstart, Python API, MCP, Ansible, and API reference Markdown artifacts. |
 | Local API bridge | `site-agent api serve` exposes generated methods through local HTTP for Swagger UI and Postman execution. |
 | Validation assets | Mock app, benchmark pack, router example, unit tests, integration tests, CI, and smoke scripts exist. |
 | Packaging | PyPI metadata, Dockerfile, GHCR workflow, PyPI publishing workflow, shell installer, and package builder exist. |
@@ -47,8 +47,8 @@ names and no deprecated read-prefix tools.
 
 The latest full unit-suite validation run before `v1.10.0` reported
 `147 passed, 2 skipped`. Later checkpoints add targeted explorer, CLI-flow,
-generated documentation, script syntax, generated JavaScript, and rendered
-splitter smoke validation.
+generated documentation, package docs/Postman publishing, script syntax,
+generated JavaScript, and rendered splitter smoke validation.
 
 ## Documentation Outcome
 
@@ -89,6 +89,6 @@ See [Known Limitations](04_KNOWN_LIMITATIONS.md) for the detailed list.
 ## Release Readiness Conclusion
 
 The architecture documentation is complete enough for developer onboarding,
-implementation planning, and release-gate review at `v1.13.0`. Before a public
+implementation planning, and release-gate review at `v1.14.0`. Before a public
 release, rerun browser-ready smoke checks, benchmark validation, generated
 surface checks, and secret/artifact review against the final release diff.

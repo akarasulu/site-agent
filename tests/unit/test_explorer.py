@@ -90,6 +90,7 @@ def write_explorer_inputs(root: Path):
     write_json(
         root / "api" / "api-spec.json",
         {
+            "package_name": "demo_client",
             "methods": [
                 {
                     "name": "internet_wan_get",
@@ -100,6 +101,30 @@ def write_explorer_inputs(root: Path):
                     "backing_tool": "internet_wan_get",
                 }
             ]
+        },
+    )
+    write_json(root / "docs" / "openapi.json", {"openapi": "3.1.0", "paths": {}})
+    (root / "docs" / "openapi.yaml").write_text('{"openapi": "3.1.0", "paths": {}}\n', encoding="utf-8")
+    (root / "docs" / "api-reference.md").write_text("# Demo Generated API Reference\n", encoding="utf-8")
+    (root / "docs" / "quickstart.md").write_text("# Demo Generated Automation Quickstart\n", encoding="utf-8")
+    (root / "docs" / "python-api.md").write_text("# Demo Python API\n", encoding="utf-8")
+    (root / "docs" / "mcp-tools.md").write_text("# Demo MCP Tools\n", encoding="utf-8")
+    (root / "docs" / "ansible-collection.md").write_text("# Demo Ansible Collection\n", encoding="utf-8")
+    write_json(root / "postman" / "collection.json", {"info": {"name": "demo"}})
+    write_json(root / "postman" / "environment.json", {"values": []})
+    write_json(
+        root / "ansible" / "ansible-spec.json",
+        {
+            "namespace": "site_agent",
+            "name": "demo",
+            "modules": [
+                {
+                    "name": "demo_internet_wan_get",
+                    "supports_check_mode": True,
+                    "idempotence_level": "full",
+                    "risk_level": "low",
+                }
+            ],
         },
     )
     write_json(root / "capabilities" / "capabilities.json", {"projection_report": {"capabilities": 1}})
@@ -135,18 +160,37 @@ def test_build_and_write_explorer_data(tmp_path):
     data = build_explorer_data(profile, make_snapshot(), root)
     explorer_dir, written = write_explorer(tmp_path, profile, make_snapshot())
 
-    assert data["summary"] == {"methods": 1, "pages": 2, "forms": 1, "elements": 2, "groups": 1}
+    assert data["summary"] == {
+        "methods": 1,
+        "public_tools": 1,
+        "ansible_modules": 1,
+        "docs": 7,
+        "postman": 2,
+        "pages": 2,
+        "forms": 1,
+        "elements": 2,
+        "groups": 1,
+    }
     method = data["methods"][0]
     assert method["group"] == "Internet / WAN"
     assert method["ui"]["page_id"] == "missing"
     assert method["ui"]["form_id"] == "form"
     assert method["ui"]["html_snapshot"] == "<h1>WAN</h1>"
     assert data["capabilities"] == {"capabilities": 1}
+    assert data["artifacts"]["openapi_json"]["href"] == "artifacts/openapi.json"
+    assert data["mcp"]["tools"][0]["name"] == "internet_wan_get"
+    assert data["ansible"]["modules"][0]["name"] == "demo_internet_wan_get"
     index_html = (explorer_dir / "index.html").read_text(encoding="utf-8")
+    assert "Generated API Explorer" in index_html
+    assert 'data-tab="overview"' in index_html
+    assert "renderPostman" in index_html
     assert 'class="splitter"' in index_html
     assert 'class="canvas-splitter"' in index_html
     assert "setupShellSplitters" in index_html
     assert "setupCanvasSplitters" in index_html
     assert "nav-collapsed" in index_html
     assert "visual-collapsed" in index_html
+    assert (explorer_dir / "swagger.html").exists()
+    assert (explorer_dir / "artifacts" / "openapi.json").exists()
+    assert (explorer_dir / "artifacts" / "postman-collection.json").exists()
     assert read_json(explorer_dir / "explorer-data.json")["summary"] == written["summary"]

@@ -14,8 +14,8 @@ in profile directories, generated adapters, and user-owned output artifacts.
 | --- | --- |
 | Python package | `site-agent` |
 | Console script | `site-agent` |
-| Package metadata version | `1.13.0` in `pyproject.toml` |
-| Runtime package version | `1.13.0` in `site_agent/__init__.py` |
+| Package metadata version | `1.14.0` in `pyproject.toml` |
+| Runtime package version | `1.14.0` in `site_agent/__init__.py` |
 | Supported Python | `>=3.11` |
 | Default browser runtime | Playwright Chromium |
 | Optional crawl backend | Crawl4AI `0.8.9` |
@@ -31,7 +31,8 @@ collapsible generated explorer regions and refreshes the live router validation
 harness. Checkpoint `v1.12.0` adds generated OpenAPI/Postman/API reference
 artifacts for consumer-facing API documentation. Checkpoint `v1.13.0` adds a
 local HTTP API bridge so those docs can be exercised from Swagger UI or
-Postman.
+Postman. Checkpoint `v1.14.0` makes the generated explorer a consumer-facing
+portal with Swagger, Postman, Python, MCP, Ansible, and audit paths.
 
 ## Product Goal
 
@@ -45,7 +46,8 @@ should produce:
 * generated Python API methods with typed arguments and risk metadata,
 * generated MCP tools with stable semantic names and adapter bindings,
 * generated Ansible modules when read/write evidence supports idempotence,
-* generated OpenAPI, Postman, and API reference documentation for consumer use,
+* generated OpenAPI, Postman, Python, MCP, Ansible, and API reference
+  documentation for consumer use,
 * deterministic configuration snapshots and restore plans for user-owned
   settings repositories,
 * validation, drift, debug, quality, and packaging reports.

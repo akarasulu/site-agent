@@ -121,3 +121,7 @@ def test_openapi_and_postman_docs_describe_public_generated_methods(tmp_path):
     assert read_json(paths["openapi_json"])["paths"]["/methods/get_status"]["post"]["operationId"] == "get_status"
     assert read_json(paths["postman_environment"])["values"][0]["key"] == "baseUrl"
     assert paths["api_reference"].read_text(encoding="utf-8").startswith("# Demo Site Generated API Reference")
+    assert paths["quickstart"].read_text(encoding="utf-8").startswith("# Demo Site Generated Automation Quickstart")
+    assert "from demo_site_client import DemoSiteClient" in paths["python_api"].read_text(encoding="utf-8")
+    assert "site-agent mcp serve --profile 'Demo Site'" in paths["mcp_tools"].read_text(encoding="utf-8")
+    assert "site-agent ansible build --profile 'Demo Site'" in paths["ansible_collection"].read_text(encoding="utf-8")

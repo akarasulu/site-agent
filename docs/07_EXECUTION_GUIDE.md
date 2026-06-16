@@ -119,6 +119,7 @@ site-agent mcp build --profile my-site
 site-agent docs build --profile my-site
 site-agent api serve --profile my-site
 site-agent ansible build --profile my-site
+site-agent explorer serve --profile my-site
 site-agent quality check --profile my-site
 ```
 
@@ -174,8 +175,14 @@ The command writes:
 output/my-site/docs/openapi.json
 output/my-site/docs/openapi.yaml
 output/my-site/docs/api-reference.md
+output/my-site/docs/quickstart.md
+output/my-site/docs/python-api.md
+output/my-site/docs/mcp-tools.md
+output/my-site/docs/ansible-collection.md
 output/my-site/postman/collection.json
 output/my-site/postman/environment.json
+output/my-site/explorer/index.html
+output/my-site/explorer/swagger.html
 ```
 
 Use `--api-bridge-url` when the local API bridge will be served on a different
@@ -189,6 +196,14 @@ Serve the generated API bridge:
 
 ```bash
 site-agent api serve --profile my-site
+```
+
+Build or serve the explorer portal for Swagger, Postman, Python, MCP, Ansible,
+and audit links:
+
+```bash
+site-agent explorer build --profile my-site
+site-agent explorer serve --profile my-site
 ```
 
 The bridge exposes:

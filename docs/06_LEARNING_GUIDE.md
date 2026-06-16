@@ -97,6 +97,7 @@ site-agent docs build --profile my-site
 site-agent api serve --profile my-site
 site-agent ansible build --profile my-site
 site-agent explorer build --profile my-site
+site-agent explorer serve --profile my-site
 ```
 
 ## 6. Connect MCP To Agent Clients

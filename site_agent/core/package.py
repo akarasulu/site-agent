@@ -199,6 +199,29 @@ def copy_json_artifact(source: Path, destination: Path, extra_patterns: list[str
     }
 
 
+def copy_text_artifact(source: Path, destination: Path, extra_patterns: list[str] | None = None) -> dict[str, Any]:
+    ensure_dir(destination.parent)
+    destination.write_text(redact_text(source.read_text(encoding="utf-8"), extra_patterns), encoding="utf-8")
+    return {
+        "path": str(destination),
+        "source_path": str(source),
+        "sha256": sha256_file(destination),
+    }
+
+
+def copy_public_doc_artifacts(source_dir: Path, destination_dir: Path, extra_patterns: list[str] | None = None) -> list[dict[str, Any]]:
+    if not source_dir.exists():
+        return []
+    copied = []
+    for source in sorted(path for path in source_dir.iterdir() if path.is_file()):
+        destination = destination_dir / source.name
+        if source.suffix == ".json":
+            copied.append(copy_json_artifact(source, destination, extra_patterns))
+        else:
+            copied.append(copy_text_artifact(source, destination, extra_patterns))
+    return copied
+
+
 def zip_directory(source_dir: Path, zip_path: Path) -> None:
     ensure_dir(zip_path.parent)
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -217,6 +240,8 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
     capabilities_path = root / "capabilities" / "capabilities.json"
     api_dir = root / "api"
     ansible_dir = root / "ansible"
+    docs_dir = root / "docs"
+    postman_dir = root / "postman"
     explorer_dir = root / "explorer"
     if not tools_path.exists() or not contract_path.exists():
         raise FileNotFoundError(f"MCP artifacts missing for profile '{profile.name}'. Run: site-agent mcp build --profile {profile.name}")
@@ -243,6 +268,8 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
         copied.append(copy_json_artifact(api_dir / "evidence.json", package_dir / "public" / "api" / "evidence.json", profile.crawl.redaction_patterns))
     if (ansible_dir / "ansible-spec.json").exists():
         copied.append(copy_json_artifact(ansible_dir / "ansible-spec.json", package_dir / "public" / "ansible" / "ansible-spec.json", profile.crawl.redaction_patterns))
+    public_doc_entries = copy_public_doc_artifacts(docs_dir, package_dir / "public" / "docs", profile.crawl.redaction_patterns)
+    public_postman_entries = copy_public_doc_artifacts(postman_dir, package_dir / "public" / "postman", profile.crawl.redaction_patterns)
     if (explorer_dir / "index.html").exists() and (explorer_dir / "explorer-data.json").exists():
         shutil.copytree(explorer_dir, package_dir / "public" / "explorer")
     identity_candidates = build_identity_candidates(snapshot, profile.crawl.redaction_patterns)
@@ -285,6 +312,8 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
             "schema": str(schema_path),
             "tools": str(tools_path),
             "contract": str(contract_path),
+            "docs": str(docs_dir) if docs_dir.exists() else None,
+            "postman": str(postman_dir) if postman_dir.exists() else None,
         },
         "artifact_classes": {
             "public": {
@@ -324,6 +353,8 @@ def build_profile_package(workspace: Path, profile: Profile, include_private: bo
             "tools": len(tools.get("tools", [])),
             "api_methods": len(read_json(api_dir / "api-spec.json").get("methods", [])) if (api_dir / "api-spec.json").exists() else 0,
             "ansible_modules": len(read_json(ansible_dir / "ansible-spec.json").get("modules", [])) if (ansible_dir / "ansible-spec.json").exists() else 0,
+            "docs": len(public_doc_entries),
+            "postman": len(public_postman_entries),
             "rag_chunks": len(rag_chunks),
             "reports": len(report_entries),
             "explorer": 1 if (explorer_dir / "index.html").exists() else 0,
