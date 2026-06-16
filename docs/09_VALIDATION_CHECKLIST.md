@@ -94,6 +94,8 @@ python -m py_compile output/my-site/api/*/*.py
 Generated docs should include `output/my-site/docs/openapi.json`,
 `output/my-site/postman/collection.json`, and
 `output/my-site/postman/environment.json`.
+To test interactive Postman or Swagger calls, start
+`site-agent api serve --profile my-site` in a separate terminal.
 
 When Ansible tooling is installed, run the generated collection through
 `ansible-test sanity`.

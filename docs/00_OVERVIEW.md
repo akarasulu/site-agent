@@ -14,8 +14,8 @@ in profile directories, generated adapters, and user-owned output artifacts.
 | --- | --- |
 | Python package | `site-agent` |
 | Console script | `site-agent` |
-| Package metadata version | `1.12.0` in `pyproject.toml` |
-| Runtime package version | `1.12.0` in `site_agent/__init__.py` |
+| Package metadata version | `1.13.0` in `pyproject.toml` |
+| Runtime package version | `1.13.0` in `site_agent/__init__.py` |
 | Supported Python | `>=3.11` |
 | Default browser runtime | Playwright Chromium |
 | Optional crawl backend | Crawl4AI `0.8.9` |
@@ -29,7 +29,9 @@ Checkpoint `v1.10.0` makes generated MCP builds synchronize the Python API
 execution layer by default. Checkpoint `v1.11.0` restores resizable and
 collapsible generated explorer regions and refreshes the live router validation
 harness. Checkpoint `v1.12.0` adds generated OpenAPI/Postman/API reference
-artifacts for consumer-facing API documentation.
+artifacts for consumer-facing API documentation. Checkpoint `v1.13.0` adds a
+local HTTP API bridge so those docs can be exercised from Swagger UI or
+Postman.
 
 ## Product Goal
 

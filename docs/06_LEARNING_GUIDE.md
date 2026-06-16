@@ -94,6 +94,7 @@ Then generate automation surfaces:
 site-agent api build --profile my-site
 site-agent mcp build --profile my-site
 site-agent docs build --profile my-site
+site-agent api serve --profile my-site
 site-agent ansible build --profile my-site
 site-agent explorer build --profile my-site
 ```

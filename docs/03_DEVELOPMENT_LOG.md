@@ -23,6 +23,7 @@ current repository state. It is not a full git history.
 | Documentation | Refresh the full `docs/00_` through `docs/10_` engineering documentation suite and add research report discovery. | `docs/00_OVERVIEW.md` through `docs/10_FINAL_REPORT.md`, `docs/research/README.md` |
 | Explorer and router validation | Restore generated explorer splitters for resizable/collapsible regions and refresh the live router integration harness around explorer builds and sanitized MCP smoke reports. | `site_agent/core/explorer.py`, `tests/unit/test_explorer.py`, `scripts/run-router-integration.sh` |
 | Generated API docs | Generate OpenAPI 3.1, Postman collection/environment, and API reference artifacts from approved profile tools and API specs. | `site_agent/core/synthesize/docs.py`, `tests/unit/test_generated_specs.py` |
+| Local API bridge | Serve generated API methods over local HTTP for Swagger UI and Postman while delegating to the generated runtime. | `site_agent/core/synthesize/http_api.py`, `tests/unit/test_http_api_bridge.py` |
 
 ## Recent Sprint Checkpoints
 
@@ -39,6 +40,7 @@ current repository state. It is not a full git history.
 | `v1.10.0` | MCP build synchronizes the generated Python API execution layer. |
 | `v1.11.0` | Generated explorer splitters and router validation harness refresh. |
 | `v1.12.0` | Generated OpenAPI/Postman/API reference documentation bundle. |
+| `v1.13.0` | Local HTTP API bridge for generated method execution. |
 
 ## Recent Validation Evidence
 

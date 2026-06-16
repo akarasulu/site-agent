@@ -4,6 +4,15 @@
 
 ## Release Notes
 
+### 1.13.0
+
+- Add `site-agent api serve` to expose generated methods over a local HTTP
+  bridge for Swagger UI and Postman.
+- Serve `GET /health`, `GET /openapi.json`, and
+  `POST /methods/<generated_method>` from the same generated runtime used by
+  MCP calls.
+- Add bridge dispatcher and HTTP round-trip regression coverage.
+
 ### 1.12.0
 
 - Generate OpenAPI 3.1, Postman collection, Postman environment, and API

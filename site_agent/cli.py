@@ -53,6 +53,7 @@ from site_agent.core.synthesize.ansible import write_ansible_collection
 from site_agent.core.synthesize.api import write_api_package
 from site_agent.core.synthesize.capabilities import synthesize_capabilities
 from site_agent.core.synthesize.docs import DEFAULT_API_BRIDGE_URL, write_api_documentation_bundle
+from site_agent.core.synthesize.http_api import make_api_bridge_handler
 from site_agent.core.synthesize.mcp import synthesize_form_tools, synthesize_tools, synthesize_unmapped_page_tools, write_mcp_package
 from site_agent.core.synthesize.mcp_import import build_mcp_import_spec, install_codex_config, marked_block, render_codex_toml, render_mcp_json
 from site_agent.core.synthesize.runtime import RuntimeErrorForTool, call_tool, serve_json_lines
@@ -988,6 +989,44 @@ def cmd_api_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_api_serve(args: argparse.Namespace) -> int:
+    import socket
+    from http.server import ThreadingHTTPServer
+
+    profile = load_profile(workspace(), args.profile)
+    package_dir = output_root(workspace(), profile.name) / "mcp"
+    if not (package_dir / "tools.json").exists():
+        raise FileNotFoundError(f"No MCP package found. Run: site-agent mcp build --profile {profile.name}")
+    if not (output_root(workspace(), profile.name) / "api" / "api-spec.json").exists():
+        write_api_package(workspace(), profile.name, read_json(package_dir / "tools.json").get("tools", []))
+    port = args.port
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            try:
+                probe.bind((args.host, port))
+                break
+            except OSError:
+                if not args.auto_port:
+                    raise
+                port += 1
+    handler = make_api_bridge_handler(package_dir)
+    server = ThreadingHTTPServer((args.host, port), handler)
+    url_host = "127.0.0.1" if args.host in {"0.0.0.0", ""} else args.host
+    base_url = f"http://{url_host}:{port}"
+    docs_paths = write_api_documentation_bundle(workspace(), profile, api_bridge_url=base_url)
+    print(f"Serving generated API bridge: {base_url}/", flush=True)
+    print(f"OpenAPI: {base_url}/openapi.json", flush=True)
+    print(f"Postman collection: {docs_paths['postman_collection']}", flush=True)
+    print("Press Ctrl-C to stop.", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        server.server_close()
+    return 0
+
+
 def cmd_ansible_build(args: argparse.Namespace) -> int:
     profile = load_profile(workspace(), args.profile)
     package_dir = output_root(workspace(), profile.name) / "mcp"
@@ -1773,6 +1812,12 @@ def build_parser(include_completion: bool = True) -> argparse.ArgumentParser:
     api_build.add_argument("--no-action-tools", action="store_true", help="Skip generated form/action candidate methods.")
     api_build.add_argument("--no-page-tools", action="store_true", help="Skip generated UI-backed page/status read methods.")
     api_build.set_defaults(func=cmd_api_build)
+    api_serve = api_sub.add_parser("serve", help="Serve generated API methods over a local HTTP bridge for Swagger UI or Postman.")
+    api_serve.add_argument("--profile", required=True)
+    api_serve.add_argument("--host", default="127.0.0.1")
+    api_serve.add_argument("--port", type=int, default=8766)
+    api_serve.add_argument("--auto-port", action="store_true", default=True, help="Use the next available port if the requested port is busy.")
+    api_serve.set_defaults(func=cmd_api_serve)
 
     mcp = sub.add_parser("mcp")
     mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)

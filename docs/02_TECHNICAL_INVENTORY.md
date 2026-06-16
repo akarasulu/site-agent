@@ -7,8 +7,8 @@ schemas, fixtures, scripts, generated artifacts, and validation surfaces.
 
 | Item | Location | Notes |
 | --- | --- | --- |
-| Package metadata | `pyproject.toml` | `site-agent` version `1.12.0`; console script maps to `site_agent.cli:main`. |
-| Runtime version | `site_agent/__init__.py` | `__version__ = "1.12.0"`. |
+| Package metadata | `pyproject.toml` | `site-agent` version `1.13.0`; console script maps to `site_agent.cli:main`. |
+| Runtime version | `site_agent/__init__.py` | `__version__ = "1.13.0"`. |
 | Python support | `pyproject.toml` | `>=3.11`; classifiers list 3.11, 3.12, and 3.13. |
 | Optional crawl dependencies | `pyproject.toml` | `playwright>=1.49`, `crawl4ai==0.8.9`. |
 | Development dependencies | `pyproject.toml` | `pytest`, `pytest-cov`, `build`, `twine`. |
@@ -25,7 +25,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `site-agent docs` | `discover`, `build` | Run AI-assisted documentation discovery and generate OpenAPI/Postman/API reference artifacts for a profile. |
 | `site-agent crawl` | `run`, `collect`, `inventory`, `plan`, `compare`, `merge` | Crawl targets, collect rendered states, build site trees, plan follow-up crawls, compare and merge snapshots. |
 | `site-agent schema` | `review`, `queue`, `approve`, `reject`, `edit` | Align UI elements to ontology and manage review decisions. |
-| `site-agent api` | `build` | Generate a typed Python API package from synthesized tools. |
+| `site-agent api` | `build`, `serve` | Generate a typed Python API package and serve generated methods over a local HTTP bridge. |
 | `site-agent mcp` | `build`, `serve`, `call`, `import`, `diff`, `refresh-adapter` | Generate, serve, call, import, compare, and refresh MCP packages; `build` also syncs the generated Python API execution layer. |
 | `site-agent ansible` | `build` | Generate an Ansible collection from synthesized tools and API spec. |
 | `site-agent explorer` | `build`, `serve` | Build and serve a static semantic API explorer with resizable and collapsible regions. |
@@ -53,6 +53,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `crawl collect` | `--profile`, `--probe-budget-seconds`, `--target-depth`, `--max-states`, `--allow-incomplete` |
 | `schema approve/reject/edit` | `--profile`, `--ui-element-id`, `--confidence`, `--note`; `edit` also requires `--canonical-name` |
 | `api build` | `--profile`, `--no-action-tools`, `--no-page-tools` |
+| `api serve` | `--profile`, `--host`, `--port`, `--auto-port` |
 | `mcp build` | `--profile`, `--include-writes`, `--no-action-tools`, `--no-page-tools` |
 | `mcp call` | `--profile`, `--tool`, `--args-json`, `--mode`, `--browser` |
 | `mcp import` | `--profile`, `--target`, `--server-name`, `--project-dir`, `--python`, `--engine-dir`, `--config`, `--apply` |
@@ -91,6 +92,7 @@ The CLI is implemented in `site_agent/cli.py`.
 | `site_agent/core/synthesize/ansible.py` | Generated Ansible collection synthesis. |
 | `site_agent/core/synthesize/contracts.py` | MCP contract generation and breaking-change diffing. |
 | `site_agent/core/synthesize/docs.py` | Generated OpenAPI, Postman, and API reference documentation bundle synthesis. |
+| `site_agent/core/synthesize/http_api.py` | Local HTTP API bridge for generated methods, OpenAPI, and Postman execution. |
 | `site_agent/core/synthesize/mcp_import.py` | MCP client config rendering and Codex config block installation. |
 | `site_agent/core/synthesize/runtime.py` | Generated tool runtime, browser-backed staged actions, MCP JSON-RPC handling, and stdio serving. |
 | `site_agent/core/config_versioning.py` | Settings repo init, config snapshot, diff, restore plan, readiness, restore execution, and verification. |

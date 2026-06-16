@@ -206,6 +206,11 @@ Generated OpenAPI and Postman artifacts document the selector-free local API
 bridge contract and carry site-agent evidence, risk, and backing-tool metadata
 through OpenAPI extensions.
 
+The local API bridge lives in `site_agent/core/synthesize/http_api.py` and is
+served by `site-agent api serve`. It exposes health, OpenAPI, and generated
+method endpoints while delegating execution to the same generated runtime used
+by MCP calls.
+
 ## Runtime And Safety
 
 Generated MCP runtime behavior lives in `site_agent/core/synthesize/runtime.py`.

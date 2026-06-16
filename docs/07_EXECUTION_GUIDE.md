@@ -117,6 +117,7 @@ site-agent schema review --profile my-site
 site-agent api build --profile my-site
 site-agent mcp build --profile my-site
 site-agent docs build --profile my-site
+site-agent api serve --profile my-site
 site-agent ansible build --profile my-site
 site-agent quality check --profile my-site
 ```
@@ -183,6 +184,18 @@ host or port:
 ```bash
 site-agent docs build --profile my-site --api-bridge-url http://127.0.0.1:9000
 ```
+
+Serve the generated API bridge:
+
+```bash
+site-agent api serve --profile my-site
+```
+
+The bridge exposes:
+
+* `GET /health`,
+* `GET /openapi.json`,
+* `POST /methods/<generated_method>`.
 
 Write-like tool calls default to dry-run:
 

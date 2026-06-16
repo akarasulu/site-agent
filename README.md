@@ -50,6 +50,7 @@ site-agent schema review --profile my-site
 site-agent api build --profile my-site
 site-agent mcp build --profile my-site
 site-agent docs build --profile my-site
+site-agent api serve --profile my-site
 site-agent mcp serve --profile my-site
 site-agent ansible build --profile my-site
 site-agent config save --profile my-site --repo ../my-site-settings --commit --tag v1
@@ -281,6 +282,24 @@ generated API reference under `output/my-site/docs/` and
 `output/my-site/postman/`. The OpenAPI contract describes the selector-free
 site-agent API bridge, not raw website selectors.
 
+Serve the generated local HTTP bridge when you want Swagger UI or Postman to
+try requests:
+
+```bash
+site-agent api serve --profile my-site
+```
+
+The bridge exposes `GET /health`, `GET /openapi.json`, and
+`POST /methods/<generated_method>`. Request bodies use this shape:
+
+```json
+{
+  "args": {},
+  "browser": false,
+  "mode": "dry-run"
+}
+```
+
 Contract stability helpers:
 
 ```bash
@@ -298,6 +317,7 @@ The generated Python API is intended to be the shared execution layer:
 
 ```bash
 site-agent api build --profile my-site
+site-agent api serve --profile my-site
 ```
 
 Expected output:
@@ -335,6 +355,9 @@ output/my-site/docs/api-reference.md
 output/my-site/postman/collection.json
 output/my-site/postman/environment.json
 ```
+
+Use `site-agent api serve --profile my-site` to run the local bridge behind
+those docs.
 
 ### MCP Server
 
