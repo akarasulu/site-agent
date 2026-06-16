@@ -35,7 +35,7 @@ from site_agent.core.doctor import doctor_checks, run_playwright_install
 from site_agent.core.drift.check import compare_snapshots
 from site_agent.core.drift.reuse import build_adapter_reuse_report
 from site_agent.core.evidence_cache import build_evidence_cache, diff_evidence_caches, load_evidence_cache, write_evidence_cache
-from site_agent.core.explorer import write_explorer
+from site_agent.core.explorer import browser_artifact_redirect, write_explorer
 from site_agent.core.form_classify import classify_forms
 from site_agent.core.ingest.docs import build_ontology_artifact
 from site_agent.core.inventory import inventory_profile
@@ -1625,6 +1625,7 @@ def cmd_explorer_serve(args: argparse.Namespace) -> int:
     port = args.port
     while True:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 probe.bind((args.host, port))
                 break
@@ -1632,8 +1633,21 @@ def cmd_explorer_serve(args: argparse.Namespace) -> int:
                 if not args.auto_port:
                     raise
                 port += 1
-    handler = functools.partial(SimpleHTTPRequestHandler, directory=str(explorer_dir))
-    server = ThreadingHTTPServer((args.host, port), handler)
+    class ExplorerRequestHandler(SimpleHTTPRequestHandler):
+        def do_GET(self) -> None:
+            redirect = browser_artifact_redirect(self.path, self.headers.get("Accept", ""))
+            if redirect:
+                self.send_response(302)
+                self.send_header("Location", redirect)
+                self.end_headers()
+                return
+            super().do_GET()
+
+    handler = functools.partial(ExplorerRequestHandler, directory=str(explorer_dir))
+    class ExplorerHttpServer(ThreadingHTTPServer):
+        allow_reuse_address = True
+
+    server = ExplorerHttpServer((args.host, port), handler)
     url_host = "127.0.0.1" if args.host in {"0.0.0.0", ""} else args.host
     print(f"Serving semantic API explorer: http://{url_host}:{port}/", flush=True)
     print(

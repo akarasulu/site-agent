@@ -43,6 +43,7 @@ current repository state. It is not a full git history.
 | `v1.12.0` | Generated OpenAPI/Postman/API reference documentation bundle. |
 | `v1.13.0` | Local HTTP API bridge for generated method execution. |
 | `v1.14.0` | Consumer-facing generated API explorer portal and packaged docs/Postman artifacts. |
+| `v1.14.1` | Browser-rendered explorer artifacts, collapsed evidence defaults, and raw artifact download routing. |
 
 ## Recent Validation Evidence
 

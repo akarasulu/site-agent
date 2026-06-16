@@ -3,6 +3,27 @@
 All notable repository checkpoints are recorded here. Tags use semantic
 versioning and sprint records under `docs/sprints/` capture validation evidence.
 
+## 1.14.1 - 2026-06-16
+
+### Fixed
+
+* Render generated Markdown and Postman artifacts as human-readable explorer
+  pages for browser requests while preserving raw downloads for tools.
+* Collapse evidence by default in generated artifact tables, MCP tool rows, and
+  the Audit detail panel.
+* Redirect browser requests for raw artifact paths to rendered helper pages,
+  while allowing raw access with `?raw=1`.
+* Reuse the explorer serve socket address so quick restarts stay on the
+  requested port.
+
+### Validation
+
+* `python -m pytest tests/unit/test_explorer.py tests/unit/test_cli_flow.py::test_cli_fixture_flow`
+* `python -m py_compile site_agent/core/explorer.py site_agent/cli.py`
+* `git diff --check`
+* Browser smoke against the regenerated ZTE explorer confirmed collapsed
+  evidence in the MCP tab and Audit detail panel.
+
 ## 1.14.0 - 2026-06-16
 
 ### Added

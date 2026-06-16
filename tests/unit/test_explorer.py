@@ -1,6 +1,14 @@
 from pathlib import Path
 
-from site_agent.core.explorer import build_explorer_data, best_page_match, method_group, page_key, touched_annotations, write_explorer
+from site_agent.core.explorer import (
+    browser_artifact_redirect,
+    build_explorer_data,
+    best_page_match,
+    method_group,
+    page_key,
+    touched_annotations,
+    write_explorer,
+)
 from site_agent.core.models import CrawlSnapshot, Evidence, Form, Page, UiElement, utc_now
 from site_agent.core.profiles import Profile
 from site_agent.core.storage import read_json, write_json
@@ -105,7 +113,13 @@ def write_explorer_inputs(root: Path):
     )
     write_json(root / "docs" / "openapi.json", {"openapi": "3.1.0", "paths": {}})
     (root / "docs" / "openapi.yaml").write_text('{"openapi": "3.1.0", "paths": {}}\n', encoding="utf-8")
-    (root / "docs" / "api-reference.md").write_text("# Demo Generated API Reference\n", encoding="utf-8")
+    (root / "docs" / "api-reference.md").write_text(
+        "# Demo Generated API Reference\n\n"
+        "| Method | Evidence |\n"
+        "| --- | --- |\n"
+        "| `internet_wan_get` | ev_one, ev_two |\n",
+        encoding="utf-8",
+    )
     (root / "docs" / "quickstart.md").write_text("# Demo Generated Automation Quickstart\n", encoding="utf-8")
     (root / "docs" / "python-api.md").write_text("# Demo Python API\n", encoding="utf-8")
     (root / "docs" / "mcp-tools.md").write_text("# Demo MCP Tools\n", encoding="utf-8")
@@ -178,12 +192,20 @@ def test_build_and_write_explorer_data(tmp_path):
     assert method["ui"]["html_snapshot"] == "<h1>WAN</h1>"
     assert data["capabilities"] == {"capabilities": 1}
     assert data["artifacts"]["openapi_json"]["href"] == "artifacts/openapi.json"
+    assert data["artifacts"]["api_reference"]["href"] == "artifacts/api-reference.html"
+    assert data["artifacts"]["api_reference"]["raw_href"] == "artifacts/api-reference.md"
+    assert data["artifacts"]["postman_environment"]["href"] == "artifacts/postman-environment.html"
+    assert data["artifacts"]["postman_environment"]["raw_href"] == "artifacts/postman-environment.json"
     assert data["mcp"]["tools"][0]["name"] == "internet_wan_get"
     assert data["ansible"]["modules"][0]["name"] == "demo_internet_wan_get"
     index_html = (explorer_dir / "index.html").read_text(encoding="utf-8")
     assert "Generated API Explorer" in index_html
     assert 'data-tab="overview"' in index_html
     assert "renderPostman" in index_html
+    assert "rawArtifactButton" in index_html
+    assert "function evidenceDetails" in index_html
+    assert '<details class="evidence">' in index_html
+    assert "evidence-list" in index_html
     assert 'class="splitter"' in index_html
     assert 'class="canvas-splitter"' in index_html
     assert "setupShellSplitters" in index_html
@@ -192,5 +214,24 @@ def test_build_and_write_explorer_data(tmp_path):
     assert "visual-collapsed" in index_html
     assert (explorer_dir / "swagger.html").exists()
     assert (explorer_dir / "artifacts" / "openapi.json").exists()
+    assert (explorer_dir / "artifacts" / "api-reference.html").exists()
+    api_reference_html = (explorer_dir / "artifacts" / "api-reference.html").read_text(encoding="utf-8")
+    assert "Demo Generated API Reference" in api_reference_html
+    assert '<details class="evidence">' in api_reference_html
+    assert "2 evidence items" in api_reference_html
     assert (explorer_dir / "artifacts" / "postman-collection.json").exists()
+    assert (explorer_dir / "artifacts" / "postman-environment.html").exists()
+    assert "Import Steps" in (explorer_dir / "artifacts" / "postman-environment.html").read_text(encoding="utf-8")
     assert read_json(explorer_dir / "explorer-data.json")["summary"] == written["summary"]
+
+
+def test_browser_artifact_redirects_only_for_human_artifact_requests():
+    accept = "text/html,application/xhtml+xml"
+
+    assert browser_artifact_redirect("/artifacts/api-reference.md", accept) == "/artifacts/api-reference.html"
+    assert browser_artifact_redirect("/artifacts/postman-environment.json", accept) == "/artifacts/postman-environment.html"
+    assert browser_artifact_redirect("/artifacts/postman-collection.json", accept) == "/artifacts/postman-collection.html"
+    assert browser_artifact_redirect("/artifacts/openapi.json", accept) == "/swagger.html"
+    assert browser_artifact_redirect("/artifacts/openapi.json?raw=1", accept) is None
+    assert browser_artifact_redirect("/artifacts/postman-environment.json?raw=1", accept) is None
+    assert browser_artifact_redirect("/artifacts/api-reference.md", "application/json") is None

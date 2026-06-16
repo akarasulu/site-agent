@@ -4,6 +4,17 @@
 
 ## Release Notes
 
+### 1.14.1
+
+- Render generated Markdown and Postman artifacts as human-readable explorer
+  pages for browser requests while preserving raw downloads for tools.
+- Collapse evidence by default in generated artifact tables, MCP tool rows, and
+  the Audit detail panel.
+- Redirect browser requests for raw artifact paths to rendered helper pages,
+  while allowing raw access with `?raw=1`.
+- Reuse the explorer serve socket address so quick restarts stay on the
+  requested port.
+
 ### 1.14.0
 
 - Rework the generated explorer into a consumer-facing API portal with

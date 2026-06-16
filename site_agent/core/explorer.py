@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import html
 import re
 import shutil
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from site_agent.core.models import CrawlSnapshot
 from site_agent.core.profiles import Profile, output_root
@@ -47,8 +49,10 @@ def surface_artifact_entries(root: Path) -> dict[str, dict[str, Any]]:
     for key, source_parts, relative_path, title, kind in SURFACE_ARTIFACTS:
         source = root.joinpath(*source_parts)
         if source.exists():
+            href = human_artifact_href(key, relative_path)
             entries[key] = {
-                "href": relative_path,
+                "href": href,
+                "raw_href": relative_path,
                 "title": title,
                 "kind": kind,
                 "bytes": source.stat().st_size,
@@ -56,14 +60,214 @@ def surface_artifact_entries(root: Path) -> dict[str, dict[str, Any]]:
     return entries
 
 
+def human_artifact_href(key: str, relative_path: str) -> str:
+    if relative_path.endswith(".md"):
+        return str(Path(relative_path).with_suffix(".html"))
+    if key in {"postman_collection", "postman_environment"}:
+        return str(Path(relative_path).with_suffix(".html"))
+    return relative_path
+
+
+def browser_artifact_redirect(path: str, accept_header: str) -> str | None:
+    parsed = urlsplit(path)
+    if parse_qs(parsed.query).get("raw"):
+        return None
+    if "text/html" not in accept_header.lower():
+        return None
+    if parsed.path.startswith("/artifacts/") and parsed.path.endswith(".md"):
+        return str(Path(parsed.path).with_suffix(".html"))
+    postman_redirects = {
+        "/artifacts/openapi.json": "/swagger.html",
+        "/artifacts/postman-collection.json": "/artifacts/postman-collection.html",
+        "/artifacts/postman-environment.json": "/artifacts/postman-environment.html",
+    }
+    return postman_redirects.get(parsed.path)
+
+
 def copy_surface_artifacts(root: Path, explorer_dir: Path) -> None:
     ensure_dir(explorer_dir / "artifacts")
-    for _key, source_parts, relative_path, _title, _kind in SURFACE_ARTIFACTS:
+    for key, source_parts, relative_path, title, _kind in SURFACE_ARTIFACTS:
         source = root.joinpath(*source_parts)
         if source.exists():
             destination = explorer_dir / relative_path
             ensure_dir(destination.parent)
             shutil.copy2(source, destination)
+            if relative_path.endswith(".md"):
+                Path(explorer_dir / human_artifact_href(key, relative_path)).write_text(
+                    build_markdown_viewer(title, relative_path, source.read_text(encoding="utf-8")),
+                    encoding="utf-8",
+                )
+            elif key in {"postman_collection", "postman_environment"}:
+                Path(explorer_dir / human_artifact_href(key, relative_path)).write_text(
+                    build_postman_viewer(title, key, relative_path),
+                    encoding="utf-8",
+                )
+
+
+def inline_markdown(value: str) -> str:
+    escaped = html.escape(value)
+    escaped = re.sub(r"`([^`]+)`", r"<code>\1</code>", escaped)
+    escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
+    return escaped
+
+
+def markdown_table(lines: list[str]) -> str:
+    raw_rows = []
+    for line in lines:
+        raw_cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if all(re.fullmatch(r":?-{3,}:?", cell) for cell in raw_cells):
+            continue
+        raw_rows.append(raw_cells)
+    if not raw_rows:
+        return ""
+    headers = raw_rows[0]
+    head = "".join(f"<th>{inline_markdown(cell)}</th>" for cell in headers)
+    body_rows = []
+    for row in raw_rows[1:]:
+        cells = []
+        for index, cell in enumerate(row):
+            header = headers[index].strip().lower() if index < len(headers) else ""
+            value = evidence_table_cell(cell) if header in {"evidence", "evidence ids"} else inline_markdown(cell)
+            cells.append(f"<td>{value}</td>")
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+    body = "".join(body_rows)
+    return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+
+
+def evidence_table_cell(value: str) -> str:
+    normalized = value.strip()
+    if not normalized or normalized.lower() == "none":
+        return "none"
+    evidence_ids = [item.strip().strip("`") for item in normalized.split(",") if item.strip()]
+    if not evidence_ids:
+        return inline_markdown(normalized)
+    label = f"{len(evidence_ids)} evidence item" + ("" if len(evidence_ids) == 1 else "s")
+    chips = "".join(f"<code>{html.escape(evidence_id)}</code>" for evidence_id in evidence_ids)
+    return f"<details class=\"evidence\"><summary>{label}</summary><div class=\"evidence-list\">{chips}</div></details>"
+
+
+def markdown_to_html(markdown: str) -> str:
+    html_lines: list[str] = []
+    lines = markdown.splitlines()
+    in_code = False
+    code_lines: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.startswith("```"):
+            if in_code:
+                html_lines.append("<pre><code>" + html.escape("\n".join(code_lines)) + "</code></pre>")
+                code_lines = []
+                in_code = False
+            else:
+                in_code = True
+            index += 1
+            continue
+        if in_code:
+            code_lines.append(line)
+            index += 1
+            continue
+        if line.startswith("|"):
+            table_lines = []
+            while index < len(lines) and lines[index].startswith("|"):
+                table_lines.append(lines[index])
+                index += 1
+            html_lines.append(markdown_table(table_lines))
+            continue
+        stripped = line.strip()
+        if not stripped:
+            index += 1
+            continue
+        heading = re.match(r"^(#{1,4})\s+(.+)$", stripped)
+        if heading:
+            level = len(heading.group(1))
+            html_lines.append(f"<h{level}>{inline_markdown(heading.group(2))}</h{level}>")
+        elif stripped.startswith("* "):
+            items = []
+            while index < len(lines) and lines[index].strip().startswith("* "):
+                items.append(f"<li>{inline_markdown(lines[index].strip()[2:])}</li>")
+                index += 1
+            html_lines.append("<ul>" + "".join(items) + "</ul>")
+            continue
+        else:
+            html_lines.append(f"<p>{inline_markdown(stripped)}</p>")
+        index += 1
+    if in_code:
+        html_lines.append("<pre><code>" + html.escape("\n".join(code_lines)) + "</code></pre>")
+    return "\n".join(html_lines)
+
+
+def build_artifact_page(title: str, body: str) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{html.escape(title)}</title>
+<style>
+body {{ margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#17202a; background:#f6f8fb; }}
+main {{ max-width:1080px; margin:0 auto; padding:24px; }}
+article {{ background:#fff; border:1px solid #d9dee6; border-radius:8px; padding:24px; }}
+a {{ color:#1267b1; }}
+table {{ border-collapse:collapse; width:100%; margin:14px 0; font-size:14px; }}
+th, td {{ border-bottom:1px solid #d9dee6; padding:8px; text-align:left; vertical-align:top; }}
+th {{ color:#425166; font-size:12px; }}
+pre {{ background:#17202a; color:#f8fbff; overflow:auto; padding:14px; border-radius:6px; }}
+code {{ font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }}
+details.evidence summary {{ color:#1267b1; cursor:pointer; font-weight:650; }}
+.evidence-list {{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-height:220px; overflow:auto; }}
+.evidence-list code {{ background:#f1f5f9; border:1px solid #d9dee6; border-radius:999px; padding:2px 6px; }}
+.actions {{ display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; }}
+.button {{ background:#1267b1; border:1px solid #1267b1; border-radius:6px; color:#fff; display:inline-flex; min-height:34px; padding:7px 11px; text-decoration:none; }}
+.button.secondary {{ background:#fff; color:#1267b1; }}
+</style>
+</head>
+<body>
+<main><article>{body}</article></main>
+</body>
+</html>
+"""
+
+
+def build_markdown_viewer(title: str, raw_href: str, markdown: str) -> str:
+    body = (
+        f"<div class=\"actions\"><a class=\"button secondary\" href=\"{html.escape(Path(raw_href).name)}?raw=1\" download>Download Markdown</a>"
+        "<a class=\"button secondary\" href=\"../index.html\">Back To Explorer</a></div>"
+        + markdown_to_html(markdown)
+    )
+    return build_artifact_page(title, body)
+
+
+def build_postman_viewer(title: str, key: str, raw_href: str) -> str:
+    noun = "collection" if key == "postman_collection" else "environment"
+    raw_name = Path(raw_href).name
+    body = f"""
+<h1>{html.escape(title)}</h1>
+<p>Use this generated Postman {noun} with the local site-agent API bridge.</p>
+<div class="actions">
+  <a class="button" href="{html.escape(raw_name)}?raw=1" download>Download {html.escape(title)}</a>
+  <a class="button secondary" href="../index.html">Back To Explorer</a>
+</div>
+<h2>Import Steps</h2>
+<ol>
+  <li>Start the bridge with <code>site-agent api serve --profile &lt;profile&gt;</code>.</li>
+  <li>In Postman, choose <strong>Import</strong> and select the downloaded {html.escape(noun)} JSON file.</li>
+  <li>Import both the collection and environment so requests can use <code>{{{{baseUrl}}}}</code>.</li>
+</ol>
+<h2>Preview</h2>
+<pre id="json-preview">Loading JSON preview...</pre>
+<script>
+fetch('{html.escape(raw_name)}?raw=1')
+  .then(response => response.json())
+  .then(data => {{
+    document.getElementById('json-preview').textContent = JSON.stringify(data, null, 2);
+  }})
+  .catch(error => {{
+    document.getElementById('json-preview').textContent = String(error);
+  }});
+</script>
+"""
+    return build_artifact_page(title, body)
 
 
 def method_group(name: str) -> str:
@@ -395,6 +599,10 @@ summary { cursor:pointer; font-weight:650; font-size:14px; }
 .kv { display:grid; grid-template-columns:120px 1fr; gap:6px 10px; font-size:13px; }
 .chips { display:flex; flex-wrap:wrap; gap:6px; }
 .chip { border:1px solid var(--line); border-radius:999px; padding:3px 7px; font-size:12px; background:#fbfcfe; }
+details.evidence { background:#fbfcfe; border:1px solid var(--line); border-radius:6px; padding:8px; }
+details.evidence summary { color:#1267b1; cursor:pointer; font-weight:650; }
+.evidence-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-height:220px; overflow:auto; }
+.evidence-list code { background:#fff; border:1px solid var(--line); border-radius:999px; font-size:12px; padding:2px 6px; }
 pre { white-space:pre-wrap; word-break:break-word; background:#f7f9fc; border:1px solid var(--line); border-radius:6px; padding:10px; font-size:12px; }
 @media (max-width: 1100px) { .shell { display:block; } aside, section.detail { border:0; } .splitter, .canvas-splitter { display:none; } .canvas { display:block; } .canvas > .page, .canvas > .anno-list { margin:0 0 16px; } .doc-grid { grid-template-columns:1fr; } }
 </style>
@@ -424,6 +632,13 @@ const $ = (id) => document.getElementById(id);
 let DATA, selected, currentTab = localStorage.getItem('siteAgentExplorer.tab') || 'overview';
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function risk(r){ return `<span class="risk ${esc(r)}">${esc(r)}</span>`; }
+function evidenceDetails(ids, emptyLabel='none'){
+  const values = (ids || []).filter(Boolean);
+  if (!values.length) return `<span class="meta">${esc(emptyLabel)}</span>`;
+  const label = `${values.length} evidence item${values.length === 1 ? '' : 's'}`;
+  const chips = values.map(id => `<code>${esc(id)}</code>`).join('');
+  return `<details class="evidence"><summary>${esc(label)}</summary><div class="evidence-list">${chips}</div></details>`;
+}
 function shellQuote(s){
   const value = String(s ?? '');
   return /^[A-Za-z0-9_./:-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\"'\"'`)}'`;
@@ -575,6 +790,12 @@ function artifactButton(key, label, secondary=false){
   if (!item) return `<span class="meta">${esc(label)} not generated yet</span>`;
   return `<a class="button-link ${secondary ? 'secondary' : ''}" href="${esc(item.href)}" target="_blank" rel="noreferrer">${esc(label)}</a>`;
 }
+function rawArtifactButton(key, label, secondary=true){
+  const item = artifact(key);
+  if (!item) return `<span class="meta">${esc(label)} not generated yet</span>`;
+  const href = item.raw_href || item.href;
+  return `<a class="button-link ${secondary ? 'secondary' : ''}" href="${esc(href)}?raw=1" target="_blank" rel="noreferrer" download>${esc(label)}</a>`;
+}
 function docCard(title, body, links){
   return `<div class="doc-card"><b>${esc(title)}</b><p>${esc(body)}</p><div class="actions">${links.join('')}</div></div>`;
 }
@@ -596,7 +817,7 @@ function operationRows(limit=14){
 }
 function mcpRows(limit=16){
   const rows = (DATA.mcp?.tools || []).slice(0, limit).map(t => `
-    <tr><td><code>${esc(t.name)}</code></td><td>${risk(t.risk_level || 'low')}</td><td>${esc(t.source_type || '')}</td><td>${esc((t.evidence_ids || []).join(', ') || 'none')}</td></tr>`).join('');
+    <tr><td><code>${esc(t.name)}</code></td><td>${risk(t.risk_level || 'low')}</td><td>${esc(t.source_type || '')}</td><td>${evidenceDetails(t.evidence_ids || [])}</td></tr>`).join('');
   return `<table class="table"><thead><tr><th>Tool</th><th>Risk</th><th>Source</th><th>Evidence</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 function ansibleRows(limit=16){
@@ -618,11 +839,11 @@ function renderOverview(){
       `site-agent explorer serve --profile ${shellQuote(DATA.profile.name)}`,
     ])}
     <div class="doc-grid">
-      ${docCard('HTTP API', 'OpenAPI contract for the generated local bridge.', [artifactButton('api_reference', 'Reference'), artifactButton('openapi_yaml', 'YAML', true)])}
+      ${docCard('HTTP API', 'OpenAPI contract for the generated local bridge.', [artifactButton('api_reference', 'Reference'), rawArtifactButton('openapi_yaml', 'YAML')])}
       ${docCard('Python API', 'Typed selector-free package backed by generated runtime metadata.', [artifactButton('python_api', 'Python Docs')])}
       ${docCard('MCP Tools', 'Agent-facing tools with risk and evidence metadata.', [artifactButton('mcp_tools', 'MCP Docs')])}
       ${docCard('Ansible', 'Generated collection for evidenced read/update operations.', [artifactButton('ansible_collection', 'Ansible Docs')])}
-      ${docCard('Postman', 'Importable collection and environment for generated HTTP calls.', [artifactButton('postman_collection', 'Collection'), artifactButton('postman_environment', 'Environment', true)])}
+      ${docCard('Postman', 'Importable collection and environment for generated HTTP calls.', [artifactButton('postman_collection', 'Import Guide'), rawArtifactButton('postman_collection', 'Collection JSON'), rawArtifactButton('postman_environment', 'Environment JSON')])}
       ${docCard('Audit View', 'Evidence, UI snapshots, and adapter context for reviewers.', [`<button class="tab" type="button" onclick="setTab('audit')">Open Audit</button>`])}
     </div>
   </div>`;
@@ -631,7 +852,7 @@ function renderApi(){
   return `<div class="portal">
     <h2>Generated HTTP API</h2>
     <p>The local bridge exposes POST endpoints under <code>/methods/&lt;method&gt;</code> and defaults examples to dry-run mode.</p>
-    <div class="actions"><a class="button-link" href="swagger.html" target="_blank" rel="noreferrer">Open Swagger UI</a>${artifactButton('openapi_json', 'OpenAPI JSON', true)}${artifactButton('api_reference', 'Markdown Reference', true)}</div>
+    <div class="actions"><a class="button-link" href="swagger.html" target="_blank" rel="noreferrer">Open Swagger UI</a>${rawArtifactButton('openapi_json', 'OpenAPI JSON')}${artifactButton('api_reference', 'API Reference', true)}</div>
     ${commandBlock([`site-agent api serve --profile ${shellQuote(DATA.profile.name)}`])}
     ${operationRows()}
   </div>`;
@@ -679,7 +900,7 @@ function renderPostman(){
   return `<div class="portal">
     <h2>Postman</h2>
     <p>Import both generated files, start the local bridge, then run requests against <code>{{baseUrl}}</code>.</p>
-    <div class="actions">${artifactButton('postman_collection', 'Download Collection')}${artifactButton('postman_environment', 'Download Environment', true)}${artifactButton('openapi_json', 'OpenAPI Import', true)}</div>
+    <div class="actions">${artifactButton('postman_collection', 'Collection Guide')}${artifactButton('postman_environment', 'Environment Guide', true)}${rawArtifactButton('postman_collection', 'Download Collection')}${rawArtifactButton('postman_environment', 'Download Environment')}${rawArtifactButton('openapi_json', 'OpenAPI JSON')}</div>
     ${commandBlock([`site-agent api serve --profile ${shellQuote(DATA.profile.name)}`])}
     ${operationRows(10)}
   </div>`;
@@ -758,7 +979,7 @@ function renderAuditView(){
       <b>Form</b><span>${esc(ui.form_id || 'none')}</span>
     </div>
     <h3>Arguments</h3><div class="chips">${(m.args || []).map(a => `<span class="chip">${esc(a)}</span>`).join('') || '<span class="meta">none</span>'}</div>
-    <h3>Evidence</h3><div class="chips">${(m.evidence_ids || []).slice(0,80).map(e => `<span class="chip">${esc(e)}</span>`).join('')}</div>
+    <h3>Evidence</h3>${evidenceDetails((m.evidence_ids || []).slice(0,80))}
     <h3>Reasoning</h3><pre>${esc(m.reasoning_summary || '')}</pre>`;
 }
 fetch('explorer-data.json').then(r => r.json()).then(data => {

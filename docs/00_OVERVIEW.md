@@ -14,8 +14,8 @@ in profile directories, generated adapters, and user-owned output artifacts.
 | --- | --- |
 | Python package | `site-agent` |
 | Console script | `site-agent` |
-| Package metadata version | `1.14.0` in `pyproject.toml` |
-| Runtime package version | `1.14.0` in `site_agent/__init__.py` |
+| Package metadata version | `1.14.1` in `pyproject.toml` |
+| Runtime package version | `1.14.1` in `site_agent/__init__.py` |
 | Supported Python | `>=3.11` |
 | Default browser runtime | Playwright Chromium |
 | Optional crawl backend | Crawl4AI `0.8.9` |
@@ -33,6 +33,8 @@ artifacts for consumer-facing API documentation. Checkpoint `v1.13.0` adds a
 local HTTP API bridge so those docs can be exercised from Swagger UI or
 Postman. Checkpoint `v1.14.0` makes the generated explorer a consumer-facing
 portal with Swagger, Postman, Python, MCP, Ansible, and audit paths.
+Checkpoint `v1.14.1` renders browser-facing artifacts and collapses dense
+evidence by default while preserving raw downloads for automation.
 
 ## Product Goal
 
